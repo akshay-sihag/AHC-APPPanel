@@ -1,0 +1,145 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  name          String?
+  phone         String?
+  avatar        String?
+  role          UserRole @default(USER)
+  isActive      Boolean  @default(true)
+  emailVerified Boolean  @default(false)
+
+  // Login tracking
+  lastLoginAt    DateTime?
+  lastLoginIp    String?
+  currentIp      String?
+  loginCount     Int       @default(0)
+  lastActivityAt DateTime?
+
+  // Secret tokens for login
+  secretTokens SecretToken[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model Settings {
+  id         String @id @default("settings")
+  // General Settings
+  adminEmail String @default("admin@alternatehealthclub.com")
+  timezone   String @default("America/New_York")
+
+  // Security Settings
+  sessionTimeout        Int     @default(30)
+  requireStrongPassword Boolean @default(true)
+  enableTwoFactor       Boolean @default(false)
+
+  // WooCommerce Settings
+  woocommerceApiUrl    String?
+  woocommerceApiKey    String?
+  woocommerceApiSecret String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  name      String
+  key       String // Hashed key for storage
+  keyPrefix String // First few chars for display (e.g., "ahc_live_sk_")
+  createdAt DateTime  @default(now())
+  lastUsed  DateTime?
+  isActive  Boolean   @default(true)
+
+  // Timestamps
+  updatedAt DateTime @updatedAt
+
+  @@map("api_keys")
+}
+
+model SecretToken {
+  id           String    @id @default(cuid())
+  userId       String // Link to user for login authentication
+  name         String
+  token        String // Hashed token for storage
+  tokenPrefix  String // First few chars for display (e.g., "ahc_sec_")
+  isLoginToken Boolean   @default(false) // If true, this token is required for login
+  createdAt    DateTime  @default(now())
+  lastUsed     DateTime?
+  isActive     Boolean   @default(true)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("secret_tokens")
+}
+
+model AppUser {
+  id        String   @id @default(cuid())
+  
+  // WordPress user data
+  wpUserId       String   @unique // WordPress user ID
+  email          String
+  name           String?
+  displayName    String?
+  
+  // Additional user information
+  phone          String?
+  age            Int?
+  height         String?
+  
+  // Fitness data
+  weight         String?  // Current weight
+  goal           String?  // Goal weight
+  initialWeight  String?  // Initial weight when user started
+  weightSet      Boolean  @default(false) // Whether weight data has been set
+  tasksToday     Int      @default(0)
+  totalWorkouts  Int      @default(0)
+  totalCalories  Int      @default(0)
+  streak         Int      @default(0)
+  
+  // Status and tracking
+  status         String   @default("Active") // Active, Inactive
+  lastLoginAt    DateTime?
+  lastLoginIp    String?
+  loginCount     Int      @default(0)
+  
+  // Timestamps
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([email])
+  @@index([wpUserId])
+  @@map("app_user")
+}
