@@ -3,19 +3,25 @@ import { prisma } from '@/lib/prisma';
 import { validateApiKey } from '@/lib/middleware';
 
 /**
- * Get WooCommerce Orders by Customer Email Endpoint
+ * WooCommerce Orders Endpoint
  * 
- * This endpoint retrieves order data from WooCommerce based on the user's email.
+ * GET: Retrieves order data from WooCommerce based on the user's email.
+ * POST: Cancels an order in WooCommerce.
  * 
- * Query Parameters:
+ * GET Query Parameters:
  * - email: User email (required) - matches the wp_user_email from Flutter app
+ * 
+ * POST Body:
+ * - orderId: Order ID to cancel (required)
+ * - email: User email for verification (required)
  * 
  * Security:
  * - Requires valid API key in request headers
  * - API key can be sent as 'X-API-Key' header or 'Authorization: Bearer <key>'
  * 
  * Returns:
- * - List of orders for the specified customer email
+ * - GET: List of orders for the specified customer email
+ * - POST: Cancelled order details
  */
 export async function GET(request: NextRequest) {
   try {
@@ -327,6 +333,302 @@ export async function GET(request: NextRequest) {
     const errorMessage = process.env.NODE_ENV === 'development' && error instanceof Error
       ? error.message
       : 'An error occurred while fetching orders from WooCommerce';
+
+    return NextResponse.json(
+      { 
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' && error instanceof Error
+          ? error.stack
+          : undefined
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Cancel WooCommerce Order Endpoint
+ * 
+ * This endpoint cancels an order in WooCommerce.
+ * 
+ * Request Body:
+ * - orderId: Order ID to cancel (required)
+ * - email: User email for verification (required)
+ * 
+ * Security:
+ * - Requires valid API key in request headers
+ * - API key can be sent as 'X-API-Key' header or 'Authorization: Bearer <key>'
+ * 
+ * Returns:
+ * - Cancelled order details
+ */
+export async function POST(request: NextRequest) {
+  try {
+    // Validate API key
+    let apiKey;
+    try {
+      apiKey = await validateApiKey(request);
+    } catch (apiKeyError) {
+      console.error('API key validation error:', apiKeyError);
+      return NextResponse.json(
+        { error: 'API key validation failed', details: process.env.NODE_ENV === 'development' ? (apiKeyError instanceof Error ? apiKeyError.message : 'Unknown error') : undefined },
+        { status: 500 }
+      );
+    }
+    
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'Unauthorized. Valid API key required.' },
+        { status: 401 }
+      );
+    }
+
+    // Get request body
+    const body = await request.json();
+    const { orderId, email } = body;
+
+    // Validate required fields
+    if (!orderId) {
+      return NextResponse.json(
+        { error: 'Order ID is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!email) {
+      return NextResponse.json(
+        { error: 'Email is required for order verification' },
+        { status: 400 }
+      );
+    }
+
+    // Normalize email
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Get WooCommerce settings from database
+    const settings = await prisma.settings.findUnique({
+      where: { id: 'settings' },
+    });
+
+    if (!settings || !settings.woocommerceApiUrl || !settings.woocommerceApiKey || !settings.woocommerceApiSecret) {
+      return NextResponse.json(
+        { error: 'WooCommerce API credentials are not configured. Please configure them in the admin settings.' },
+        { status: 500 }
+      );
+    }
+
+    // Prepare WooCommerce API URL
+    let apiUrl = settings.woocommerceApiUrl.replace(/\/$/, '');
+    
+    // Auto-fix API URL if it's missing the wp-json path
+    if (!apiUrl.includes('/wp-json/wc/')) {
+      const baseUrl = apiUrl.replace(/\/wp-json.*$/, '');
+      apiUrl = `${baseUrl}/wp-json/wc/v3`;
+      console.warn(`WooCommerce API URL was missing /wp-json/wc/ path. Auto-corrected to: ${apiUrl}`);
+    }
+    
+    // Validate API URL format
+    if (!apiUrl.includes('/wp-json/wc/')) {
+      return NextResponse.json(
+        {
+          error: 'Invalid WooCommerce API URL format',
+          details: process.env.NODE_ENV === 'development' 
+            ? `The API URL "${settings.woocommerceApiUrl}" is invalid. It should be in the format: https://yourstore.com/wp-json/wc/v3` 
+            : 'Please check your WooCommerce API URL in admin settings.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Create Basic Auth header for WooCommerce API
+    const authString = Buffer.from(
+      `${settings.woocommerceApiKey}:${settings.woocommerceApiSecret}`
+    ).toString('base64');
+
+    const authHeaders = {
+      'Authorization': `Basic ${authString}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    // First, verify the order exists and belongs to the user
+    const orderUrl = `${apiUrl}/orders/${orderId}`;
+    const orderResponse = await fetch(orderUrl, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    // Check if response is JSON
+    const orderContentType = orderResponse.headers.get('content-type');
+    const isOrderJson = orderContentType && orderContentType.includes('application/json');
+
+    if (!orderResponse.ok) {
+      const errorText = await orderResponse.text();
+      
+      if (!isOrderJson && errorText.includes('<!DOCTYPE')) {
+        return NextResponse.json(
+          {
+            error: 'WooCommerce API returned an HTML page instead of JSON',
+            details: process.env.NODE_ENV === 'development' 
+              ? 'Please check your WooCommerce API URL and credentials.' 
+              : undefined,
+          },
+          { status: 500 }
+        );
+      }
+
+      if (orderResponse.status === 404) {
+        return NextResponse.json(
+          { error: 'Order not found' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: 'Failed to fetch order from WooCommerce',
+          details: process.env.NODE_ENV === 'development' 
+            ? `WooCommerce API returned ${orderResponse.status}: ${orderResponse.statusText}` 
+            : undefined,
+        },
+        { status: orderResponse.status || 500 }
+      );
+    }
+
+    // Parse order data
+    let order;
+    try {
+      const orderText = await orderResponse.text();
+      if (!isOrderJson) {
+        return NextResponse.json(
+          {
+            error: 'WooCommerce API returned an invalid response format',
+            details: process.env.NODE_ENV === 'development' 
+              ? 'The API returned HTML or non-JSON content.' 
+              : undefined,
+          },
+          { status: 500 }
+        );
+      }
+      order = JSON.parse(orderText);
+    } catch (parseError) {
+      console.error('Failed to parse order response:', parseError);
+      return NextResponse.json(
+        {
+          error: 'Failed to parse response from WooCommerce API',
+          details: process.env.NODE_ENV === 'development' && parseError instanceof Error
+            ? parseError.message
+            : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
+    // Verify the order belongs to the user
+    const orderEmail = order.billing?.email?.toLowerCase().trim() || order.customer_email?.toLowerCase().trim();
+    if (orderEmail !== normalizedEmail) {
+      return NextResponse.json(
+        { error: 'Order does not belong to this user' },
+        { status: 403 }
+      );
+    }
+
+    // Check if order can be cancelled
+    const cancellableStatuses = ['pending', 'processing', 'on-hold'];
+    if (!cancellableStatuses.includes(order.status)) {
+      return NextResponse.json(
+        { 
+          error: `Order cannot be cancelled. Current status: ${order.status}`,
+          details: 'Only orders with status "pending", "processing", or "on-hold" can be cancelled.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Cancel the order by updating status to "cancelled"
+    const cancelResponse = await fetch(orderUrl, {
+      method: 'PUT',
+      headers: authHeaders,
+      body: JSON.stringify({
+        status: 'cancelled',
+      }),
+    });
+
+    // Check if response is JSON
+    const cancelContentType = cancelResponse.headers.get('content-type');
+    const isCancelJson = cancelContentType && cancelContentType.includes('application/json');
+
+    if (!cancelResponse.ok) {
+      const errorText = await cancelResponse.text();
+      console.error('WooCommerce cancel order error:', {
+        status: cancelResponse.status,
+        statusText: cancelResponse.statusText,
+        error: errorText.substring(0, 500),
+      });
+
+      if (!isCancelJson && errorText.includes('<!DOCTYPE')) {
+        return NextResponse.json(
+          {
+            error: 'WooCommerce API returned an HTML page instead of JSON',
+            details: process.env.NODE_ENV === 'development' 
+              ? 'Please check your WooCommerce API URL and credentials.' 
+              : undefined,
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: 'Failed to cancel order in WooCommerce',
+          details: process.env.NODE_ENV === 'development' 
+            ? `WooCommerce API returned ${cancelResponse.status}: ${cancelResponse.statusText}` 
+            : undefined,
+        },
+        { status: cancelResponse.status || 500 }
+      );
+    }
+
+    // Parse cancelled order response
+    let cancelledOrder;
+    try {
+      const cancelText = await cancelResponse.text();
+      if (!isCancelJson) {
+        return NextResponse.json(
+          {
+            error: 'WooCommerce API returned an invalid response format',
+            details: process.env.NODE_ENV === 'development' 
+              ? 'The API returned HTML or non-JSON content.' 
+              : undefined,
+          },
+          { status: 500 }
+        );
+      }
+      cancelledOrder = JSON.parse(cancelText);
+    } catch (parseError) {
+      console.error('Failed to parse cancel order response:', parseError);
+      return NextResponse.json(
+        {
+          error: 'Failed to parse response from WooCommerce API',
+          details: process.env.NODE_ENV === 'development' && parseError instanceof Error
+            ? parseError.message
+            : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Order cancelled successfully',
+      order: cancelledOrder,
+    });
+  } catch (error) {
+    console.error('Cancel WooCommerce order error:', error);
+    
+    const errorMessage = process.env.NODE_ENV === 'development' && error instanceof Error
+      ? error.message
+      : 'An error occurred while cancelling the order';
 
     return NextResponse.json(
       { 
