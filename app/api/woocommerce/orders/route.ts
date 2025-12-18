@@ -94,10 +94,28 @@ export async function GET(request: NextRequest) {
     let customerId: number | null = null;
 
     if (customersResponse.ok) {
-      const customers = await customersResponse.json();
-      const customersArray = Array.isArray(customers) ? customers : [customers];
-      if (customersArray.length > 0 && customersArray[0].id) {
-        customerId = customersArray[0].id;
+      // Check if response is JSON before parsing
+      const customersContentType = customersResponse.headers.get('content-type');
+      const isCustomersJson = customersContentType && customersContentType.includes('application/json');
+      
+      if (isCustomersJson) {
+        try {
+          const customers = await customersResponse.json();
+          const customersArray = Array.isArray(customers) ? customers : [customers];
+          if (customersArray.length > 0 && customersArray[0].id) {
+            customerId = customersArray[0].id;
+          }
+        } catch (parseError) {
+          console.error('Failed to parse customers response:', parseError);
+          // Continue without customer ID - will use email fallback
+        }
+      } else {
+        // If customers endpoint returns HTML, log it but continue
+        const errorText = await customersResponse.text();
+        console.warn('WooCommerce customers API returned non-JSON response. Will use email for orders lookup.');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Response preview:', errorText.substring(0, 200));
+        }
       }
     }
 
@@ -117,13 +135,31 @@ export async function GET(request: NextRequest) {
       headers: authHeaders,
     });
 
+    // Check if response is JSON
+    const contentType = woocommerceResponse.headers.get('content-type');
+    const isJson = contentType && contentType.includes('application/json');
+
     if (!woocommerceResponse.ok) {
       const errorText = await woocommerceResponse.text();
       console.error('WooCommerce API error:', {
         status: woocommerceResponse.status,
         statusText: woocommerceResponse.statusText,
-        error: errorText,
+        contentType,
+        error: errorText.substring(0, 500), // Limit error text length
       });
+
+      // If HTML error page is returned, provide a better error message
+      if (!isJson && errorText.includes('<!DOCTYPE')) {
+        return NextResponse.json(
+          {
+            error: 'WooCommerce API returned an HTML error page. Please check your API credentials and URL.',
+            details: process.env.NODE_ENV === 'development' 
+              ? `Status: ${woocommerceResponse.status}. The API URL might be incorrect or authentication failed.` 
+              : undefined,
+          },
+          { status: 500 }
+        );
+      }
 
       return NextResponse.json(
         {
@@ -136,16 +172,115 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const orders = await woocommerceResponse.json();
+    // Parse JSON response
+    let orders;
+    try {
+      const responseText = await woocommerceResponse.text();
+      if (!isJson) {
+        console.error('WooCommerce API returned non-JSON response:', responseText.substring(0, 500));
+        return NextResponse.json(
+          {
+            error: 'WooCommerce API returned an invalid response format',
+            details: process.env.NODE_ENV === 'development' 
+              ? 'The API returned HTML or non-JSON content. Please check your API URL and credentials.' 
+              : undefined,
+          },
+          { status: 500 }
+        );
+      }
+      orders = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse WooCommerce response:', parseError);
+      return NextResponse.json(
+        {
+          error: 'Failed to parse response from WooCommerce API',
+          details: process.env.NODE_ENV === 'development' && parseError instanceof Error
+            ? parseError.message
+            : undefined,
+        },
+        { status: 500 }
+      );
+    }
 
     // Handle case where WooCommerce returns a single order object instead of array
     const ordersArray = Array.isArray(orders) ? orders : [orders];
 
+    // Enrich orders with product details (name, quantity, image)
+    const enrichedOrders = await Promise.all(
+      ordersArray.map(async (order: any) => {
+        if (!order.line_items || !Array.isArray(order.line_items)) {
+          return {
+            ...order,
+            items: [],
+          };
+        }
+
+        // Enrich each line item with product details
+        const enrichedItems = await Promise.all(
+          order.line_items.map(async (item: any) => {
+            const productDetails: any = {
+              id: item.id,
+              name: item.name || 'Unknown Product',
+              quantity: item.quantity || 0,
+              price: item.price || '0',
+              subtotal: item.subtotal || '0',
+              total: item.total || '0',
+              sku: item.sku || '',
+              image: null,
+              product_id: item.product_id || null,
+              variation_id: item.variation_id || null,
+            };
+
+            // Fetch product details to get image
+            if (item.product_id) {
+              try {
+                const productUrl = `${apiUrl}/products/${item.product_id}`;
+                const productResponse = await fetch(productUrl, {
+                  method: 'GET',
+                  headers: authHeaders,
+                });
+
+                if (productResponse.ok) {
+                  const productContentType = productResponse.headers.get('content-type');
+                  if (productContentType && productContentType.includes('application/json')) {
+                    try {
+                      const product = await productResponse.json();
+                      // Get the first image URL
+                      if (product.images && product.images.length > 0) {
+                        productDetails.image = product.images[0].src || null;
+                      }
+                      // Update name if product has a different name
+                      if (product.name) {
+                        productDetails.name = product.name;
+                      }
+                    } catch (productParseError) {
+                      console.error(`Failed to parse product ${item.product_id} response:`, productParseError);
+                      // Continue without product image
+                    }
+                  }
+                }
+              } catch (productError) {
+                console.error(`Failed to fetch product ${item.product_id}:`, productError);
+                // Continue without product image
+              }
+            }
+
+            return productDetails;
+          })
+        );
+
+        return {
+          ...order,
+          items: enrichedItems,
+        };
+      })
+    );
+
     return NextResponse.json({
       success: true,
       email: normalizedEmail,
-      count: ordersArray.length,
-      orders: ordersArray,
+      count: enrichedOrders.length,
+      orders: enrichedOrders,
     });
   } catch (error) {
     console.error('Get WooCommerce orders error:', error);
