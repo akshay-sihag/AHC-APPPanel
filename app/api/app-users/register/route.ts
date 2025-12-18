@@ -4,16 +4,20 @@ import { getClientIp } from '@/lib/auth';
 import { validateApiKey } from '@/lib/middleware';
 
 /**
- * Register/Update App User Endpoint
+ * Register App User Endpoint
  * 
  * This endpoint is called ONLY when a user logs into the Android app.
  * It collects and stores user data from the Android app's local storage
  * (WordPress user data, weight data, etc.) into the app_user table.
  * 
  * Behavior:
- * - If user doesn't exist: Creates a new user record
- * - If user exists: Updates existing user with latest data and login info
+ * - If user doesn't exist: Creates a new user record with all provided data
+ * - If user already exists: Returns existing user data without registering again
+ *   - Updates login tracking (IP, login count, last login time, status)
+ *   - Does NOT update user data fields (name, email, weight, etc.) for existing users
  * - Automatically tracks login count, last login time, and IP address
+ * 
+ * Note: To retrieve user data without registration, use GET /api/app-users/get?wpUserId=<id>
  * 
  * Security:
  * - Requires valid API key in request headers
@@ -74,31 +78,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (existingUser) {
-      // Update existing user with latest login info
+      // User already exists - return existing user data without registering again
+      // Optionally update login tracking fields (IP, login count, last login time, status)
       const updatedUser = await prisma.appUser.update({
         where: { wpUserId: String(wpUserId) },
         data: {
-          email: email.toLowerCase().trim(),
-          name: name || displayName || existingUser.name,
-          displayName: displayName || name || existingUser.displayName,
-          phone: phone || existingUser.phone,
-          age: age || existingUser.age,
-          height: height || existingUser.height,
-          weight: weight !== undefined ? weight : existingUser.weight,
-          goal: goal !== undefined ? goal : existingUser.goal,
-          initialWeight: initialWeight !== undefined ? initialWeight : existingUser.initialWeight,
-          weightSet: weightSet !== undefined ? weightSet : existingUser.weightSet,
           lastLoginAt: new Date(),
           lastLoginIp: clientIp,
           loginCount: existingUser.loginCount + 1,
           status: 'Active',
-          updatedAt: new Date(),
         },
       });
 
       return NextResponse.json({
         success: true,
-        message: 'User updated successfully',
+        message: 'User already registered. Returning existing user data.',
         user: updatedUser,
       });
     }
