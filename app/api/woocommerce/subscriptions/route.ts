@@ -68,7 +68,29 @@ export async function GET(request: NextRequest) {
 
     // Prepare WooCommerce API URL
     // Remove trailing slash if present and ensure proper endpoint
-    const apiUrl = settings.woocommerceApiUrl.replace(/\/$/, '');
+    let apiUrl = settings.woocommerceApiUrl.replace(/\/$/, '');
+    
+    // Auto-fix API URL if it's missing the wp-json path
+    // If URL doesn't contain /wp-json/wc/, try to construct it
+    if (!apiUrl.includes('/wp-json/wc/')) {
+      // Try to append the standard WooCommerce REST API path
+      const baseUrl = apiUrl.replace(/\/wp-json.*$/, ''); // Remove any existing wp-json path
+      apiUrl = `${baseUrl}/wp-json/wc/v3`; // Default to v3
+      console.warn(`WooCommerce API URL was missing /wp-json/wc/ path. Auto-corrected to: ${apiUrl}`);
+    }
+    
+    // Validate API URL format - should contain wp-json/wc/v3 or wp-json/wc/v1
+    if (!apiUrl.includes('/wp-json/wc/')) {
+      return NextResponse.json(
+        {
+          error: 'Invalid WooCommerce API URL format',
+          details: process.env.NODE_ENV === 'development' 
+            ? `The API URL "${settings.woocommerceApiUrl}" is invalid. It should be in the format: https://yourstore.com/wp-json/wc/v3 or https://yourstore.com/wp-json/wc/v1` 
+            : 'Please check your WooCommerce API URL in admin settings. It should include /wp-json/wc/v3 or /wp-json/wc/v1',
+        },
+        { status: 400 }
+      );
+    }
 
     // Create Basic Auth header for WooCommerce API
     // WooCommerce uses Consumer Key as username and Consumer Secret as password
@@ -79,6 +101,7 @@ export async function GET(request: NextRequest) {
     const authHeaders = {
       'Authorization': `Basic ${authString}`,
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     };
 
     // First, try to get customer by email to get customer ID
@@ -95,10 +118,29 @@ export async function GET(request: NextRequest) {
     let customerId: number | null = null;
 
     if (customersResponse.ok) {
-      const customers = await customersResponse.json();
-      const customersArray = Array.isArray(customers) ? customers : [customers];
-      if (customersArray.length > 0 && customersArray[0].id) {
-        customerId = customersArray[0].id;
+      // Check if response is JSON before parsing
+      const customersContentType = customersResponse.headers.get('content-type');
+      const isCustomersJson = customersContentType && customersContentType.includes('application/json');
+      
+      if (isCustomersJson) {
+        try {
+          const customers = await customersResponse.json();
+          const customersArray = Array.isArray(customers) ? customers : [customers];
+          if (customersArray.length > 0 && customersArray[0].id) {
+            customerId = customersArray[0].id;
+          }
+        } catch (parseError) {
+          console.error('Failed to parse customers response:', parseError);
+          // Continue without customer ID - will use email fallback
+        }
+      } else {
+        // If customers endpoint returns HTML, log it but continue
+        const errorText = await customersResponse.text();
+        console.warn('WooCommerce customers API returned non-JSON response. Will use email for subscriptions lookup.');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Response preview:', errorText.substring(0, 200));
+        }
+        // If we get HTML, it might mean the API URL is wrong - but continue anyway
       }
     }
 
@@ -141,13 +183,31 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Check if response is JSON
+    const contentType = woocommerceResponse.headers.get('content-type');
+    const isJson = contentType && contentType.includes('application/json');
+
     if (!woocommerceResponse.ok) {
       const errorText = await woocommerceResponse.text();
       console.error('WooCommerce Subscriptions API error:', {
         status: woocommerceResponse.status,
         statusText: woocommerceResponse.statusText,
-        error: errorText,
+        contentType,
+        error: errorText.substring(0, 500), // Limit error text length
       });
+
+      // If HTML error page is returned, provide a better error message
+      if (!isJson && errorText.includes('<!DOCTYPE')) {
+        return NextResponse.json(
+          {
+            error: 'WooCommerce API returned an HTML page instead of JSON',
+            details: process.env.NODE_ENV === 'development' 
+              ? `The API URL "${apiUrl}" appears to be incorrect. It should point to your WooCommerce REST API endpoint (e.g., https://yourstore.com/wp-json/wc/v3). Please verify the API URL in admin settings.` 
+              : 'Please check your WooCommerce API URL configuration in admin settings.',
+          },
+          { status: 500 }
+        );
+      }
 
       // Check if it's a 404 - might mean subscriptions plugin is not installed
       if (woocommerceResponse.status === 404) {
@@ -173,7 +233,49 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    subscriptions = await woocommerceResponse.json();
+    // Parse JSON response
+    let subscriptions;
+    try {
+      const responseText = await woocommerceResponse.text();
+      if (!isJson) {
+        console.error('WooCommerce Subscriptions API returned non-JSON response:', responseText.substring(0, 500));
+        
+        // Check if it's an HTML error page
+        if (responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
+          return NextResponse.json(
+            {
+              error: 'WooCommerce API returned an HTML page instead of JSON',
+              details: process.env.NODE_ENV === 'development' 
+                ? `The API URL "${apiUrl}" appears to be incorrect. It should point to your WooCommerce REST API endpoint (e.g., https://yourstore.com/wp-json/wc/v3). Please verify the API URL in admin settings.` 
+                : 'Please check your WooCommerce API URL configuration in admin settings.',
+            },
+            { status: 500 }
+          );
+        }
+        
+        return NextResponse.json(
+          {
+            error: 'WooCommerce API returned an invalid response format',
+            details: process.env.NODE_ENV === 'development' 
+              ? 'The API returned HTML or non-JSON content. Please check your API URL and credentials.' 
+              : undefined,
+          },
+          { status: 500 }
+        );
+      }
+      subscriptions = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse WooCommerce subscriptions response:', parseError);
+      return NextResponse.json(
+        {
+          error: 'Failed to parse response from WooCommerce API',
+          details: process.env.NODE_ENV === 'development' && parseError instanceof Error
+            ? parseError.message
+            : undefined,
+        },
+        { status: 500 }
+      );
+    }
 
     // Handle case where WooCommerce returns a single subscription object instead of array
     const subscriptionsArray = Array.isArray(subscriptions) ? subscriptions : [subscriptions];
