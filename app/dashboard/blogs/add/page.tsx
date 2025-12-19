@@ -16,6 +16,7 @@ export default function AddBlogPage() {
     featuredImage: ''
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [newTagName, setNewTagName] = useState('');
 
   const handleAddTag = () => {
@@ -33,20 +34,43 @@ export default function AddBlogPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.tagline || !formData.description || formData.tags.length === 0 || !formData.featuredImage) {
-      alert('Please fill in all required fields and add at least one tag');
+    if (!formData.title || !formData.tagline || !formData.description || formData.tags.length === 0 || !imageFile) {
+      alert('Please fill in all required fields, add at least one tag, and select an image');
       return;
     }
 
     try {
       setSubmitting(true);
+
+      // First, upload the image
+      const imageFormData = new FormData();
+      imageFormData.append('image', imageFile);
+
+      const uploadResponse = await fetch('/api/blogs/upload-image', {
+        method: 'POST',
+        credentials: 'include',
+        body: imageFormData,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
+        throw new Error(errorData.error || 'Failed to upload image');
+      }
+
+      const uploadData = await uploadResponse.json();
+      const imageUrl = uploadData.imageUrl;
+
+      // Then, create the blog with the image URL
       const response = await fetch('/api/blogs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          featuredImage: imageUrl,
+        }),
       });
 
       if (!response.ok) {
@@ -205,11 +229,11 @@ export default function AddBlogPage() {
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
+                setImageFile(file);
                 const reader = new FileReader();
                 reader.onloadend = () => {
                   const result = reader.result as string;
                   setImagePreview(result);
-                  setFormData({ ...formData, featuredImage: result });
                 };
                 reader.readAsDataURL(file);
               }

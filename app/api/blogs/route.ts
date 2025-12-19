@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, tagline, description, tags, featuredImage, status } = body;
+    let { title, tagline, description, tags, featuredImage, status } = body;
 
     // Validate required fields
     if (!title || !tagline || !description || !tags || !Array.isArray(tags) || tags.length === 0 || !featuredImage) {
@@ -95,6 +95,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Normalize text to handle encoding issues - only replace characters that cause WIN1252 encoding errors
+    // The error specifically mentions byte sequence 0xe2 0x89 0xa5 which is the "≥" character
+    const normalizeText = (text: string): string => {
+      if (!text) return text;
+      // Only replace the specific problematic character that causes the encoding error
+      // This is a minimal fix to prevent the WIN1252 encoding issue
+      return text.replace(/≥/g, '>=').replace(/≤/g, '<=');
+    };
+
+    // Normalize text fields to prevent encoding errors
+    title = normalizeText(title);
+    tagline = normalizeText(tagline);
+    description = normalizeText(description);
 
     // Create blog
     const blog = await prisma.blog.create({

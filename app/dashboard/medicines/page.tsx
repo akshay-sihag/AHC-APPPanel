@@ -98,6 +98,7 @@ export default function MedicinesPage() {
     url: ''
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
 
   const filteredMedicines = medicines.filter(medicine => {
     const matchesSearch = medicine.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -118,6 +119,7 @@ export default function MedicinesPage() {
       url: ''
     });
     setImagePreview(null);
+    setImageFile(null);
     setIsModalOpen(true);
   };
 
@@ -171,8 +173,43 @@ export default function MedicinesPage() {
       return;
     }
 
+    // If creating new medicine, image is required
+    if (!editingMedicine && !imageFile) {
+      alert('Please select an image');
+      return;
+    }
+
+    // If editing and no image file selected, keep existing image
+    if (editingMedicine && !imageFile && !formData.image) {
+      alert('Please select an image or keep the existing one');
+      return;
+    }
+
     try {
       setSubmitting(true);
+
+      let imageUrl = formData.image;
+
+      // If a new image file is selected, upload it first
+      if (imageFile) {
+        const imageFormData = new FormData();
+        imageFormData.append('image', imageFile);
+
+        const uploadResponse = await fetch('/api/medicines/upload-image', {
+          method: 'POST',
+          credentials: 'include',
+          body: imageFormData,
+        });
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json();
+          throw new Error(errorData.error || 'Failed to upload image');
+        }
+
+        const uploadData = await uploadResponse.json();
+        imageUrl = uploadData.imageUrl;
+      }
+
       const url = editingMedicine 
         ? `/api/medicines/${editingMedicine.id}`
         : '/api/medicines';
@@ -190,7 +227,7 @@ export default function MedicinesPage() {
           title: formData.title.trim(),
           tagline: formData.tagline.trim() || null,
           description: formData.description.trim() || null,
-          image: formData.image || null,
+          image: imageUrl || null,
           url: formData.url.trim() || null,
         }),
       });
@@ -225,6 +262,7 @@ export default function MedicinesPage() {
         url: ''
       });
       setImagePreview(null);
+      setImageFile(null);
     } catch (error) {
       console.error('Error saving medicine:', error);
       alert(error instanceof Error ? error.message : 'Failed to save medicine');
@@ -237,6 +275,7 @@ export default function MedicinesPage() {
     setIsModalOpen(false);
     setEditingMedicine(null);
     setImagePreview(null);
+    setImageFile(null);
     setFormData({
       categoryId: '',
       title: '',
@@ -603,20 +642,20 @@ export default function MedicinesPage() {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
+                      setImageFile(file);
                       const reader = new FileReader();
                       reader.onloadend = () => {
                         const result = reader.result as string;
                         setImagePreview(result);
-                        setFormData({ ...formData, image: result });
                       };
                       reader.readAsDataURL(file);
                     } else {
                       // If no file selected, keep existing image if editing
+                      setImageFile(null);
                       if (editingMedicine && formData.image) {
                         setImagePreview(formData.image);
                       } else {
                         setImagePreview(null);
-                        setFormData({ ...formData, image: '' });
                       }
                     }
                   }}

@@ -20,6 +20,7 @@ export default function EditBlogPage() {
     featuredImage: ''
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [newTagName, setNewTagName] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -74,20 +75,53 @@ export default function EditBlogPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.tagline || !formData.description || formData.tags.length === 0 || !formData.featuredImage) {
+    if (!formData.title || !formData.tagline || !formData.description || formData.tags.length === 0) {
       alert('Please fill in all required fields and add at least one tag');
+      return;
+    }
+
+    // If no image is selected and no existing image, show error
+    if (!imageFile && !formData.featuredImage) {
+      alert('Please select an image');
       return;
     }
 
     try {
       setSubmitting(true);
+
+      let imageUrl = formData.featuredImage;
+
+      // If a new image file is selected, upload it first
+      if (imageFile) {
+        const imageFormData = new FormData();
+        imageFormData.append('image', imageFile);
+
+        const uploadResponse = await fetch('/api/blogs/upload-image', {
+          method: 'POST',
+          credentials: 'include',
+          body: imageFormData,
+        });
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json();
+          throw new Error(errorData.error || 'Failed to upload image');
+        }
+
+        const uploadData = await uploadResponse.json();
+        imageUrl = uploadData.imageUrl;
+      }
+
+      // Update the blog with the image URL
       const response = await fetch(`/api/blogs/${blogId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          featuredImage: imageUrl,
+        }),
       });
 
       if (!response.ok) {
@@ -258,11 +292,11 @@ export default function EditBlogPage() {
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
+                setImageFile(file);
                 const reader = new FileReader();
                 reader.onloadend = () => {
                   const result = reader.result as string;
                   setImagePreview(result);
-                  setFormData({ ...formData, featuredImage: result });
                 };
                 reader.readAsDataURL(file);
               }
@@ -283,6 +317,11 @@ export default function EditBlogPage() {
                 }}
               />
             </div>
+          )}
+          {formData.featuredImage && !imagePreview && (
+            <p className="text-xs text-[#7895b3] mt-1">
+              Current image will be kept if no new image is selected
+            </p>
           )}
         </div>
 

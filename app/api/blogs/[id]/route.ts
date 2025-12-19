@@ -57,7 +57,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
-    const { title, tagline, description, tags, featuredImage, status } = body;
+    let { title, tagline, description, tags, featuredImage, status } = body;
 
     // Check if blog exists
     const existingBlog = await prisma.blog.findUnique({
@@ -80,6 +80,18 @@ export async function PUT(
         );
       }
     }
+
+    // Normalize text to handle encoding issues - only replace characters that cause WIN1252 encoding errors
+    const normalizeText = (text: string): string => {
+      if (!text) return text;
+      // Only replace the specific problematic character that causes the encoding error
+      return text.replace(/≥/g, '>=').replace(/≤/g, '<=');
+    };
+
+    // Normalize text fields to prevent encoding errors
+    if (title) title = normalizeText(title);
+    if (tagline) tagline = normalizeText(tagline);
+    if (description) description = normalizeText(description);
 
     // Update blog
     const blog = await prisma.blog.update({
