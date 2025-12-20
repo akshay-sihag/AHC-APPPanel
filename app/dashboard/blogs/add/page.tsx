@@ -6,6 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import RichTextEditor from '@/app/components/RichTextEditor';
 import { getImageUrl } from '@/lib/image-utils';
+import NotificationModal from '@/app/components/NotificationModal';
 
 export default function AddBlogPage() {
   const router = useRouter();
@@ -19,6 +20,8 @@ export default function AddBlogPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [newTagName, setNewTagName] = useState('');
+  const [showNotification, setShowNotification] = useState(false);
+  const [notification, setNotification] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
   const handleAddTag = () => {
     if (newTagName.trim() && !formData.tags.includes(newTagName.trim())) {
@@ -36,7 +39,12 @@ export default function AddBlogPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.tagline || !formData.description || formData.tags.length === 0 || !imageFile) {
-      alert('Please fill in all required fields, add at least one tag, and select an image');
+      setNotification({
+        title: 'Validation Error',
+        message: 'Please fill in all required fields, add at least one tag, and select an image',
+        type: 'warning',
+      });
+      setShowNotification(true);
       return;
     }
 
@@ -81,7 +89,12 @@ export default function AddBlogPage() {
 
       router.push('/dashboard/blogs');
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to create blog');
+      setNotification({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to create blog',
+        type: 'error',
+      });
+      setShowNotification(true);
       console.error('Error creating blog:', error);
     } finally {
       setSubmitting(false);
@@ -276,6 +289,21 @@ export default function AddBlogPage() {
           </button>
         </div>
       </form>
+
+      {/* Notification Modal */}
+      {notification && (
+        <NotificationModal
+          isOpen={showNotification}
+          onClose={() => {
+            setShowNotification(false);
+            setNotification(null);
+          }}
+          title={notification.title}
+          message={notification.message}
+          type={notification.type}
+          duration={3000}
+        />
+      )}
     </div>
   );
 }

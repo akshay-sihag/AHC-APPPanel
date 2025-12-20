@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
               id: true,
               title: true,
               tagline: true,
+              icon: true,
             }
           }
         }
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
             id: medicine.category.id,
             title: medicine.category.title,
             tagline: medicine.category.tagline,
+            icon: medicine.category.icon,
           },
           title: medicine.title,
           tagline: medicine.tagline,
@@ -125,6 +127,7 @@ export async function GET(request: NextRequest) {
               id: true,
               title: true,
               tagline: true,
+              icon: true,
             }
           }
         },
@@ -144,6 +147,7 @@ export async function GET(request: NextRequest) {
           id: medicine.category.id,
           title: medicine.category.title,
           tagline: medicine.category.tagline,
+          icon: medicine.category.icon,
         },
         title: medicine.title,
         tagline: medicine.tagline,

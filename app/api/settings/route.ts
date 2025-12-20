@@ -54,12 +54,16 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const {
       timezone,
+      weightUnit,
+      heightUnit,
       sessionTimeout,
       requireStrongPassword,
       enableTwoFactor,
       woocommerceApiUrl,
       woocommerceApiKey,
       woocommerceApiSecret,
+      fcmServerKey,
+      fcmProjectId,
     } = body;
 
     // Get or create settings
@@ -80,12 +84,16 @@ export async function PUT(request: NextRequest) {
       where: { id: 'settings' },
       data: {
         timezone: timezone !== undefined ? timezone : settings.timezone,
+        weightUnit: weightUnit !== undefined ? weightUnit : settings.weightUnit,
+        heightUnit: heightUnit !== undefined ? heightUnit : settings.heightUnit,
         sessionTimeout: sessionTimeout !== undefined ? sessionTimeout : settings.sessionTimeout,
         requireStrongPassword: requireStrongPassword !== undefined ? requireStrongPassword : settings.requireStrongPassword,
         enableTwoFactor: enableTwoFactor !== undefined ? enableTwoFactor : settings.enableTwoFactor,
         woocommerceApiUrl: woocommerceApiUrl !== undefined ? woocommerceApiUrl : settings.woocommerceApiUrl,
         woocommerceApiKey: woocommerceApiKey !== undefined ? woocommerceApiKey : settings.woocommerceApiKey,
         woocommerceApiSecret: woocommerceApiSecret !== undefined ? woocommerceApiSecret : settings.woocommerceApiSecret,
+        fcmServerKey: fcmServerKey !== undefined ? fcmServerKey : settings.fcmServerKey,
+        fcmProjectId: fcmProjectId !== undefined ? fcmProjectId : settings.fcmProjectId,
       },
     });
 

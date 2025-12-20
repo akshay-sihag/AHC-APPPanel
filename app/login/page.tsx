@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -18,9 +18,18 @@ function LoginPageContent() {
   const [tokenError, setTokenError] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
   
   // Get callback URL from query params
   const callbackUrl = searchParams?.get('callbackUrl') || '/dashboard';
+
+  // Redirect to dashboard if user is already logged in
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      router.push(callbackUrl);
+      router.refresh();
+    }
+  }, [status, session, router, callbackUrl]);
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +127,30 @@ function LoginPageContent() {
     setSecretToken('');
     setStoredPassword('');
   };
+
+  // Show loading state while checking session
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#435970] mx-auto"></div>
+          <p className="mt-4 text-[#7895b3]">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render login form if user is authenticated (will redirect)
+  if (status === 'authenticated') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#435970] mx-auto"></div>
+          <p className="mt-4 text-[#7895b3]">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">

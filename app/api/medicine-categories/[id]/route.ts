@@ -50,6 +50,7 @@ export async function GET(
         id: category.id,
         title: category.title,
         tagline: category.tagline,
+        icon: category.icon,
         medicineCount: category._count.medicines,
         createdAt: category.createdAt.toISOString(),
         updatedAt: category.updatedAt.toISOString(),
@@ -83,7 +84,7 @@ export async function PUT(
     const resolvedParams = params instanceof Promise ? await params : params;
     
     const body = await request.json();
-    const { title, tagline } = body;
+    const { title, tagline, icon } = body;
 
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
       return NextResponse.json(
@@ -137,6 +138,10 @@ export async function PUT(
     if (tagline !== undefined) {
       updateData.tagline = tagline && tagline.trim() ? tagline.trim() : null;
     }
+    
+    if (icon !== undefined) {
+      updateData.icon = icon && icon.trim() ? icon.trim() : null;
+    }
 
     const category = await prisma.medicineCategory.update({
       where: { id: categoryId },
@@ -150,6 +155,7 @@ export async function PUT(
         id: category.id,
         title: category.title,
         tagline: category.tagline,
+        icon: category.icon,
         createdAt: category.createdAt.toISOString(),
         updatedAt: category.updatedAt.toISOString(),
       },

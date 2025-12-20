@@ -52,6 +52,10 @@ model Settings {
   adminEmail String @default("admin@alternatehealthclub.com")
   timezone   String @default("America/New_York")
 
+  // Display Units (for app system view only, not affecting API)
+  weightUnit String @default("lbs") // Options: lbs, kg, g
+  heightUnit String @default("inches") // Options: inches, cm, m, feet
+
   // Security Settings
   sessionTimeout        Int     @default(30)
   requireStrongPassword Boolean @default(true)
@@ -61,6 +65,10 @@ model Settings {
   woocommerceApiUrl    String?
   woocommerceApiKey    String?
   woocommerceApiSecret String?
+
+  // FCM Settings for Push Notifications
+  fcmServerKey         String?  // Firebase Cloud Messaging server key
+  fcmProjectId         String?  // Firebase project ID
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -135,6 +143,9 @@ model AppUser {
   lastLoginIp    String?
   loginCount     Int      @default(0)
   
+  // Push notifications
+  fcmToken       String?  // Firebase Cloud Messaging token for push notifications
+  
   // Relations
   weightLogs     WeightLog[]
   
@@ -168,6 +179,7 @@ model MedicineCategory {
   id        Int      @id @default(autoincrement())
   title     String
   tagline   String?
+  icon      String?  // Icon image path
   
   // Relations
   medicines Medicine[]
@@ -227,4 +239,20 @@ model WeightLog {
   @@index([userEmail])
   @@index([date])
   @@map("weight_logs")
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  image       String?  // Path to notification image
+  isActive    Boolean  @default(true)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("notifications")
 }

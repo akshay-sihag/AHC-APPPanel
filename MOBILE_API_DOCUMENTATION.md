@@ -485,7 +485,8 @@ GET /api/medicines/public?categoryId=1&search=vitamin
     "category": {
       "id": 1,
       "title": "Weight Loss",
-      "tagline": "Accelerate Your Metabolism Naturally"
+      "tagline": "Accelerate Your Metabolism Naturally",
+      "icon": "/medicine/category-icons/1766203299813_icon.png"
     },
     "title": "Premium Fat Burner",
     "tagline": "Advanced weight loss formula",
@@ -509,7 +510,8 @@ GET /api/medicines/public?categoryId=1&search=vitamin
       "category": {
         "id": 1,
         "title": "Weight Loss",
-        "tagline": "Accelerate Your Metabolism Naturally"
+        "tagline": "Accelerate Your Metabolism Naturally",
+        "icon": "/medicine/category-icons/1766203299813_icon.png"
       },
       "title": "Premium Fat Burner",
       "tagline": "Advanced weight loss formula",
@@ -534,7 +536,8 @@ GET /api/medicines/public?categoryId=1&search=vitamin
 **Important Notes:**
 - Only active medicines are returned
 - Images are stored as Base64 data URLs
-- Each medicine includes its category information
+- Each medicine includes its category information with icon
+- Category icons are returned as relative paths (e.g., `/medicine/category-icons/filename.png`) and should be resolved to full URLs on the client side
 
 **Error Responses:**
 - `401 Unauthorized`: Invalid or missing API key
@@ -577,6 +580,7 @@ GET /api/medicine-categories/public?search=weight
     "id": 1,
     "title": "Weight Loss",
     "tagline": "Accelerate Your Metabolism Naturally",
+    "icon": "/medicine/category-icons/1766203299813_icon.png",
     "medicineCount": 15,
     "createdAt": "2024-01-10T08:00:00.000Z",
     "updatedAt": "2024-01-12T14:30:00.000Z"
@@ -593,6 +597,7 @@ GET /api/medicine-categories/public?search=weight
       "id": 1,
       "title": "Weight Loss",
       "tagline": "Accelerate Your Metabolism Naturally",
+      "icon": "/medicine/category-icons/1766203299813_icon.png",
       "medicineCount": 15,
       "createdAt": "2024-01-10T08:00:00.000Z",
       "updatedAt": "2024-01-12T14:30:00.000Z"
@@ -612,6 +617,8 @@ GET /api/medicine-categories/public?search=weight
 **Important Notes:**
 - Category IDs are numeric and start from 1
 - Each category includes the count of medicines in that category
+- Category icons are returned as relative paths (e.g., `/medicine/category-icons/filename.png`) and should be resolved to full URLs on the client side
+- The `icon` field may be `null` if no icon has been uploaded for the category
 
 **Error Responses:**
 - `400 Bad Request`: Invalid category ID format
@@ -621,9 +628,182 @@ GET /api/medicine-categories/public?search=weight
 
 ---
 
+### Push Notifications
+
+#### 8. Get Notifications
+
+Retrieve active push notifications.
+
+**Endpoint:** `GET /api/notifications/public`
+
+**Headers:**
+```http
+X-API-Key: ahc_live_sk_your_api_key_here
+```
+
+**Query Parameters:**
+- `id` (string, optional): Get a single notification by ID
+- `page` (number, optional): Page number (default: 1)
+- `limit` (number, optional): Items per page (default: 20, max: 50)
+
+**Example Request:**
+```http
+GET /api/notifications/public?page=1&limit=20
+GET /api/notifications/public?id=clx123abc
+```
+
+**Response - Single Notification (200 OK):**
+```json
+{
+  "success": true,
+  "notification": {
+    "id": "clx123abc",
+    "title": "New Product Available",
+    "description": "Check out our latest weight loss supplement!",
+    "image": "/notifications/images/1766203299813_image.png",
+    "createdAt": "2024-01-15T10:30:00.000Z",
+    "updatedAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+**Response - List of Notifications (200 OK):**
+```json
+{
+  "success": true,
+  "notifications": [
+    {
+      "id": "clx123abc",
+      "title": "New Product Available",
+      "description": "Check out our latest weight loss supplement!",
+      "image": "/notifications/images/1766203299813_image.png",
+      "createdAt": "2024-01-15T10:30:00.000Z",
+      "updatedAt": "2024-01-15T10:30:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 5,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  }
+}
+```
+
+**Important Notes:**
+- Only active notifications are returned
+- Images are returned as relative paths and should be resolved to full URLs on the client side
+- The `image` field may be `null` if no image has been uploaded for the notification
+
+**Error Responses:**
+- `401 Unauthorized`: Invalid or missing API key
+- `404 Not Found`: Notification not found or not active (when using `id` parameter)
+- `500 Internal Server Error`: Server error
+
+---
+
+#### 9. Register FCM Token
+
+Register or update Firebase Cloud Messaging (FCM) token for push notifications.
+
+**Endpoint:** `POST /api/app-users/fcm-token`
+
+**Headers:**
+```http
+Content-Type: application/json
+X-API-Key: ahc_live_sk_your_api_key_here
+```
+
+**Request Body:**
+```json
+{
+  "wpUserId": "123",
+  "email": "user@example.com",
+  "fcmToken": "device_fcm_token_here"
+}
+```
+
+**Required Fields:**
+- `wpUserId` (string): WordPress user ID
+- `email` (string): User email address
+- `fcmToken` (string): Firebase Cloud Messaging token from the device
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "FCM token registered successfully",
+  "user": {
+    "id": "clx123abc",
+    "wpUserId": "123",
+    "email": "user@example.com",
+    "fcmTokenRegistered": true
+  }
+}
+```
+
+**Important Notes:**
+- This endpoint should be called when the app receives an FCM token from Firebase
+- If the user doesn't exist, a new user record will be created
+- If the user exists, the FCM token will be updated
+- The FCM token should be refreshed and re-registered periodically (when token changes)
+
+**Error Responses:**
+- `400 Bad Request`: Missing required fields
+- `401 Unauthorized`: Invalid or missing API key
+- `500 Internal Server Error`: Server error
+
+---
+
+#### 10. Remove FCM Token
+
+Remove FCM token when user logs out or unsubscribes from push notifications.
+
+**Endpoint:** `DELETE /api/app-users/fcm-token`
+
+**Headers:**
+```http
+X-API-Key: ahc_live_sk_your_api_key_here
+```
+
+**Query Parameters:**
+- `wpUserId` (string, optional): WordPress user ID
+- `email` (string, optional): User email address
+
+**Note:** At least one of `wpUserId` or `email` must be provided.
+
+**Example Request:**
+```http
+DELETE /api/app-users/fcm-token?wpUserId=123
+DELETE /api/app-users/fcm-token?email=user@example.com
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "FCM token removed successfully"
+}
+```
+
+**Important Notes:**
+- This endpoint should be called when the user logs out
+- After removing the token, the user will no longer receive push notifications
+- The user can re-register their token by calling the register endpoint again
+
+**Error Responses:**
+- `400 Bad Request`: Missing both wpUserId and email parameters
+- `401 Unauthorized`: Invalid or missing API key
+- `404 Not Found`: User not found
+- `500 Internal Server Error`: Server error
+
+---
+
 ### WooCommerce Integration
 
-#### 8. Get WooCommerce Orders
+#### 11. Get WooCommerce Orders
 
 Retrieve orders from WooCommerce based on user email.
 
@@ -694,7 +874,7 @@ GET /api/woocommerce/orders?email=user@example.com
 
 ---
 
-#### 9. Cancel WooCommerce Order
+#### 12. Cancel WooCommerce Order
 
 Cancel an order in WooCommerce.
 
@@ -741,7 +921,7 @@ X-API-Key: ahc_live_sk_your_api_key_here
 
 ---
 
-#### 10. Get WooCommerce Subscriptions
+#### 13. Get WooCommerce Subscriptions
 
 Retrieve subscriptions from WooCommerce based on user email.
 
@@ -764,6 +944,9 @@ GET /api/woocommerce/subscriptions?email=user@example.com
 ```json
 {
   "success": true,
+  "email": "user@example.com",
+  "customerId": 123,
+  "count": 1,
   "subscriptions": [
     {
       "id": 789,
@@ -790,12 +973,353 @@ GET /api/woocommerce/subscriptions?email=user@example.com
 **Important Notes:**
 - Requires WooCommerce Subscriptions plugin to be installed
 - WooCommerce API credentials must be configured in admin settings
+- Subscriptions are filtered by customer email if customer ID is not found
 
 **Error Responses:**
 - `400 Bad Request`: Missing email parameter or invalid WooCommerce API URL
 - `401 Unauthorized`: Invalid or missing API key
 - `404 Not Found`: Subscriptions endpoint not found (plugin may not be installed)
 - `500 Internal Server Error`: WooCommerce API error or configuration issue
+
+---
+
+#### 14. Get WooCommerce Billing Address
+
+Retrieve billing address for a customer by email.
+
+**Endpoint:** `GET /api/woocommerce/billing-address`
+
+**Headers:**
+```http
+X-API-Key: ahc_live_sk_your_api_key_here
+```
+
+**Query Parameters:**
+- `email` (string, required): User email address
+
+**Example Request:**
+```http
+GET /api/woocommerce/billing-address?email=user@example.com
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "email": "user@example.com",
+  "customerId": 123,
+  "billing": {
+    "first_name": "John",
+    "last_name": "Doe",
+    "company": "ACME Corp",
+    "address_1": "123 Main Street",
+    "address_2": "Suite 100",
+    "city": "New York",
+    "state": "NY",
+    "postcode": "10001",
+    "country": "US",
+    "email": "user@example.com",
+    "phone": "+1234567890"
+  }
+}
+```
+
+**Important Notes:**
+- Customer must exist in WooCommerce
+- Returns empty strings for fields that are not set
+- Country code should be ISO 3166-1 alpha-2 format (e.g., "US", "GB", "CA")
+
+**Error Responses:**
+- `400 Bad Request`: Missing email parameter or invalid WooCommerce API URL
+- `401 Unauthorized`: Invalid or missing API key
+- `404 Not Found`: Customer not found
+- `500 Internal Server Error`: WooCommerce API error or configuration issue
+
+---
+
+#### 15. Update WooCommerce Billing Address
+
+Update billing address for a customer by email.
+
+**Endpoint:** `PUT /api/woocommerce/billing-address`
+
+**Headers:**
+```http
+Content-Type: application/json
+X-API-Key: ahc_live_sk_your_api_key_here
+```
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com",
+  "billing": {
+    "first_name": "John",
+    "last_name": "Doe",
+    "company": "ACME Corp",
+    "address_1": "123 Main Street",
+    "address_2": "Suite 100",
+    "city": "New York",
+    "state": "NY",
+    "postcode": "10001",
+    "country": "US",
+    "email": "user@example.com",
+    "phone": "+1234567890"
+  }
+}
+```
+
+**Required Fields:**
+- `email` (string): User email address
+- `billing` (object): Billing address object
+
+**Billing Address Fields:**
+- `first_name` (string, required): First name
+- `last_name` (string, required): Last name
+- `company` (string, optional): Company name
+- `address_1` (string, required): Street address line 1
+- `address_2` (string, optional): Street address line 2
+- `city` (string, required): City
+- `state` (string, required): State/Province code
+- `postcode` (string, required): Postal/ZIP code
+- `country` (string, required): Country code (ISO 3166-1 alpha-2, e.g., "US", "GB", "CA")
+- `email` (string, required): Email address
+- `phone` (string, optional): Phone number
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Billing address updated successfully",
+  "email": "user@example.com",
+  "customerId": 123,
+  "billing": {
+    "first_name": "John",
+    "last_name": "Doe",
+    "company": "ACME Corp",
+    "address_1": "123 Main Street",
+    "address_2": "Suite 100",
+    "city": "New York",
+    "state": "NY",
+    "postcode": "10001",
+    "country": "US",
+    "email": "user@example.com",
+    "phone": "+1234567890"
+  }
+}
+```
+
+**Important Notes:**
+- Customer must exist in WooCommerce before updating billing address
+- Only provided fields will be updated; existing fields are preserved
+- Country code must be in ISO 3166-1 alpha-2 format
+- State code format varies by country (e.g., "NY" for US, "ON" for Canada)
+
+**Error Responses:**
+- `400 Bad Request`: Missing required fields or invalid WooCommerce API URL
+- `401 Unauthorized`: Invalid or missing API key
+- `404 Not Found`: Customer not found (must register first)
+- `500 Internal Server Error`: WooCommerce API error or configuration issue
+
+---
+
+## Firebase Cloud Messaging (FCM) Setup
+
+To enable push notifications in your Android app, you need to set up Firebase Cloud Messaging (FCM). Follow these steps:
+
+### Step 1: Create Firebase Project
+
+1. Go to [Firebase Console](https://console.firebase.google.com/)
+2. Click "Add project" or select an existing project
+3. Enter your project name and follow the setup wizard
+4. Enable Google Analytics (optional but recommended)
+5. Click "Create project"
+
+### Step 2: Add Android App to Firebase
+
+1. In your Firebase project, click "Add app" and select Android
+2. Enter your Android package name (e.g., `com.yourcompany.yourapp`)
+3. Enter app nickname (optional)
+4. Enter SHA-1 certificate fingerprint (optional for now, required for production)
+5. Click "Register app"
+
+### Step 3: Download Configuration File
+
+1. Download `google-services.json` file
+2. Place it in your Android app's `app/` directory (not in `src/`)
+3. The file should be at: `app/google-services.json`
+
+### Step 4: Add Firebase SDK to Android App
+
+**In your `build.gradle` (Project level):**
+```gradle
+buildscript {
+    dependencies {
+        // Add this line
+        classpath 'com.google.gms:google-services:4.4.0'
+    }
+}
+```
+
+**In your `build.gradle` (App level):**
+```gradle
+plugins {
+    id 'com.android.application'
+    // Add this line
+    id 'com.google.gms.google-services'
+}
+
+dependencies {
+    // Add Firebase Cloud Messaging
+    implementation 'com.google.firebase:firebase-messaging:23.3.1'
+    // Add Firebase BOM for version management
+    implementation platform('com.google.firebase:firebase-bom:32.7.0')
+}
+```
+
+### Step 5: Get FCM Token in Android App
+
+Create a service to get the FCM token:
+
+```kotlin
+// FirebaseMessagingService.kt
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
+
+class MyFirebaseMessagingService : FirebaseMessagingService() {
+    
+    override fun onNewToken(token: String) {
+        // Send token to your server
+        sendTokenToServer(token)
+    }
+    
+    override fun onMessageReceived(remoteMessage: RemoteMessage) {
+        // Handle received push notification
+        remoteMessage.notification?.let {
+            // Show notification
+            showNotification(it.title, it.body, it.imageUrl)
+        }
+    }
+    
+    private fun sendTokenToServer(token: String) {
+        // Call your API to register the token
+        // POST /api/app-users/fcm-token
+    }
+}
+```
+
+**Get FCM Token:**
+```kotlin
+FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+    if (!task.isSuccessful) {
+        Log.w(TAG, "Fetching FCM registration token failed", task.exception)
+        return@addOnCompleteListener
+    }
+    
+    // Get new FCM registration token
+    val token = task.result
+    Log.d(TAG, "FCM Registration Token: $token")
+    
+    // Send token to server
+    sendTokenToServer(token)
+}
+```
+
+### Step 6: Register Token with API
+
+When you receive the FCM token, register it with the API:
+
+```kotlin
+fun registerFCMToken(wpUserId: String, email: String, fcmToken: String) {
+    val requestBody = JSONObject().apply {
+        put("wpUserId", wpUserId)
+        put("email", email)
+        put("fcmToken", fcmToken)
+    }
+    
+    val request = Request.Builder()
+        .url("$baseUrl/api/app-users/fcm-token")
+        .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+        .addHeader("X-API-Key", apiKey)
+        .build()
+    
+    client.newCall(request).enqueue(object : Callback {
+        override fun onResponse(call: Call, response: Response) {
+            if (response.isSuccessful) {
+                Log.d(TAG, "FCM token registered successfully")
+            }
+        }
+        
+        override fun onFailure(call: Call, e: IOException) {
+            Log.e(TAG, "Failed to register FCM token", e)
+        }
+    })
+}
+```
+
+### Step 7: Configure FCM in Admin Dashboard
+
+1. Go to your admin dashboard → Settings → WooCommerce tab
+2. Scroll to "Firebase Cloud Messaging (FCM) Settings"
+3. Enter your Firebase Project ID (from Firebase Console → Project Settings → General)
+4. Enter your FCM Server Key (from Firebase Console → Project Settings → Cloud Messaging → Server key)
+5. Click "Save Settings"
+
+### Step 8: Get FCM Server Key
+
+1. Go to Firebase Console → Your Project
+2. Click the gear icon → Project Settings
+3. Go to "Cloud Messaging" tab
+4. Under "Cloud Messaging API (Legacy)", copy the "Server key"
+5. Paste it in the admin dashboard settings
+
+### Step 9: Test Push Notifications
+
+1. Create a notification in the admin dashboard (Dashboard → Notifications)
+2. Make sure the notification is set to "Active"
+3. The push notification will be automatically sent to all users with registered FCM tokens
+4. Users should receive the notification on their Android devices
+
+### Important Notes
+
+- **Token Refresh**: FCM tokens can change. Always listen for `onNewToken()` and re-register the token
+- **Token Removal**: Call the DELETE endpoint when user logs out to stop receiving notifications
+- **Error Handling**: Handle invalid token errors and remove them from your local storage
+- **Background Notifications**: Configure notification channels for Android 8.0+
+- **Production**: For production apps, you'll need to add your app's SHA-1 certificate fingerprint in Firebase Console
+
+### Android Notification Channel Setup
+
+For Android 8.0+ (API 26+), create a notification channel:
+
+```kotlin
+private fun createNotificationChannel() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channelId = "default"
+        val channelName = "Default Notifications"
+        val channelDescription = "Default notification channel"
+        val importance = NotificationManager.IMPORTANCE_HIGH
+        
+        val channel = NotificationChannel(channelId, channelName, importance).apply {
+            description = channelDescription
+            enableLights(true)
+            lightColor = Color.BLUE
+            enableVibration(true)
+        }
+        
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.createNotificationChannel(channel)
+    }
+}
+```
+
+### Troubleshooting
+
+- **No notifications received**: Check that FCM token is registered and notification is active
+- **Token registration fails**: Verify API key is correct and user exists
+- **Notifications not showing**: Check notification channel setup and app permissions
+- **Token invalid errors**: Token may have expired, re-register the token
 
 ---
 
@@ -1050,7 +1574,23 @@ For API support, issues, or questions:
 
 ## Changelog
 
-### Version 1.0.0 (Current)
+### Version 1.3.0 (Current)
+- Added WooCommerce billing address endpoints (GET and PUT)
+- Users can now retrieve and update their billing address via API
+- Improved WooCommerce subscriptions API to filter by email when customer ID is not found
+
+### Version 1.2.0
+- Added push notifications API endpoints
+- Added FCM token registration and management endpoints
+- Notifications can be retrieved with pagination support
+- FCM integration for sending push notifications to Android devices
+
+### Version 1.1.0
+- Added `icon` field to medicine categories API responses
+- Category icons are now included in both category and medicine endpoints
+- Icons are returned as relative paths and should be resolved to full URLs on the client side
+
+### Version 1.0.0
 - Initial API documentation
 - User registration and retrieval
 - Weight logs submission and retrieval
@@ -1060,7 +1600,7 @@ For API support, issues, or questions:
 
 ---
 
-**Last Updated:** January 2024
+**Last Updated:** December 2024
 
-**API Version:** 1.0.0
+**API Version:** 1.3.0
 

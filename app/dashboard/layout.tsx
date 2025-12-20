@@ -75,7 +75,8 @@ function DashboardLayoutContent({
     { name: 'Log Data', href: '/dashboard/log-data', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', hasSubmenu: false },
     { name: 'Medicines', href: '/dashboard/medicines', icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', hasSubmenu: true, submenuKey: 'medicines' },
     { name: 'Blogs', href: '/dashboard/blogs', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z', hasSubmenu: false },
-    { name: 'Settings', href: '/dashboard/settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z', hasSubmenu: false },
+    { name: 'Notifications', href: '/dashboard/notifications', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9', hasSubmenu: false },
+    { name: 'Settings', href: '/dashboard/settings', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4', hasSubmenu: false },
   ];
 
   return (
@@ -139,7 +140,7 @@ function DashboardLayoutContent({
         </div>
 
         {/* Navigation Menu */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map((item) => {
             const isActive = pathname === item.href || (item.href === '/dashboard/medicines' && pathname.startsWith('/dashboard/medicines'));
             const isExpanded = item.hasSubmenu && expandedMenus.includes(item.submenuKey || '');
@@ -147,36 +148,38 @@ function DashboardLayoutContent({
 
             if (item.hasSubmenu && item.submenuKey === 'medicines') {
               return (
-                <div key={item.href}>
+                <div key={item.href} className="space-y-1">
                   <button
                     onClick={() => toggleMenu('medicines')}
-                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
                       isActive
-                        ? 'bg-[#7895b3] text-white shadow-md'
-                        : 'text-white/80 hover:bg-[#7895b3]/20 hover:text-white'
+                        ? 'bg-gradient-to-r from-[#7895b3] to-[#6c7a89] text-white shadow-lg shadow-[#7895b3]/30'
+                        : 'text-white/90 hover:bg-[#7895b3]/25 hover:text-white hover:shadow-md'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <svg
-                        className="w-5 h-5 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d={item.icon}
-                        />
-                      </svg>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`flex-shrink-0 w-5 h-5 flex items-center justify-center transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d={item.icon}
+                          />
+                        </svg>
+                      </div>
                       {isSidebarOpen && (
-                        <span className="font-medium">{item.name}</span>
+                        <span className="font-semibold text-sm truncate">{item.name}</span>
                       )}
                     </div>
                     {isSidebarOpen && (
                       <svg
-                        className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-4 h-4 flex-shrink-0 transition-all duration-300 ${isExpanded ? 'rotate-90' : ''} ${isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`}
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -184,61 +187,77 @@ function DashboardLayoutContent({
                         <path
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          strokeWidth={2}
+                          strokeWidth={2.5}
                           d="M9 5l7 7-7 7"
                         />
                       </svg>
                     )}
                   </button>
                   {isExpanded && isSidebarOpen && (
-                    <div className="ml-4 mt-1 space-y-1 border-l-2 border-[#7895b3]/30 pl-4">
+                    <div className="relative ml-6 mt-2 space-y-1.5 pl-2">
+                      {/* Visual connector line */}
+                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-[#7895b3]/50 via-[#7895b3]/30 to-transparent rounded-full"></div>
+                      
                       {/* Category Management Link */}
                       <Link
                         href="/dashboard/medicines/category"
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                        className={`relative flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all duration-300 group ${
                           pathname === '/dashboard/medicines/category'
-                            ? 'bg-[#7895b3] text-white'
-                            : 'text-white/70 hover:bg-[#7895b3]/20 hover:text-white'
+                            ? 'bg-gradient-to-r from-[#7895b3] to-[#6c7a89] text-white shadow-md shadow-[#7895b3]/20'
+                            : 'text-white/75 hover:bg-[#7895b3]/20 hover:text-white hover:translate-x-1'
                         }`}
                       >
-                        <svg
-                          className="w-3 h-3 flex-shrink-0"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 6h16M4 10h16M4 14h16M4 18h16"
-                          />
-                        </svg>
-                        <span>Category</span>
+                        {/* Active indicator dot */}
+                        {pathname === '/dashboard/medicines/category' && (
+                          <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-sm border-2 border-[#7895b3]"></div>
+                        )}
+                        <div className={`flex-shrink-0 w-4 h-4 flex items-center justify-center transition-transform duration-300 ${pathname === '/dashboard/medicines/category' ? 'scale-110' : 'group-hover:scale-110'}`}>
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                            />
+                          </svg>
+                        </div>
+                        <span className="font-medium truncate">Category</span>
                       </Link>
+                      
                       {/* All Medicines Link */}
                       <Link
                         href="/dashboard/medicines"
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                        className={`relative flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all duration-300 group ${
                           !currentCategory && pathname === '/dashboard/medicines'
-                            ? 'bg-[#7895b3] text-white'
-                            : 'text-white/70 hover:bg-[#7895b3]/20 hover:text-white'
+                            ? 'bg-gradient-to-r from-[#7895b3] to-[#6c7a89] text-white shadow-md shadow-[#7895b3]/20'
+                            : 'text-white/75 hover:bg-[#7895b3]/20 hover:text-white hover:translate-x-1'
                         }`}
                       >
-                        <svg
-                          className="w-3 h-3 flex-shrink-0"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
-                          />
-                        </svg>
-                        <span>All</span>
+                        {/* Active indicator dot */}
+                        {!currentCategory && pathname === '/dashboard/medicines' && (
+                          <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-sm border-2 border-[#7895b3]"></div>
+                        )}
+                        <div className={`flex-shrink-0 w-4 h-4 flex items-center justify-center transition-transform duration-300 ${!currentCategory && pathname === '/dashboard/medicines' ? 'scale-110' : 'group-hover:scale-110'}`}>
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                            />
+                          </svg>
+                        </div>
+                        <span className="font-medium truncate">All</span>
                       </Link>
                     </div>
                   )}
@@ -250,27 +269,29 @@ function DashboardLayoutContent({
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                className={`group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${
                   isActive
-                    ? 'bg-[#7895b3] text-white shadow-md'
-                    : 'text-white/80 hover:bg-[#7895b3]/20 hover:text-white'
+                    ? 'bg-gradient-to-r from-[#7895b3] to-[#6c7a89] text-white shadow-lg shadow-[#7895b3]/30'
+                    : 'text-white/90 hover:bg-[#7895b3]/25 hover:text-white hover:shadow-md'
                 }`}
               >
-                <svg
-                  className="w-5 h-5 flex-shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d={item.icon}
-                  />
-                </svg>
+                <div className={`flex-shrink-0 w-5 h-5 flex items-center justify-center transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d={item.icon}
+                    />
+                  </svg>
+                </div>
                 {isSidebarOpen && (
-                  <span className="font-medium">{item.name}</span>
+                  <span className="font-semibold text-sm truncate">{item.name}</span>
                 )}
               </Link>
             );
@@ -281,23 +302,25 @@ function DashboardLayoutContent({
         <div className="p-4 border-t border-[#7895b3]/30">
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg text-white/80 hover:bg-red-600/20 hover:text-white transition-all duration-200 w-full text-left"
+            className="group flex items-center gap-3 px-4 py-3 rounded-xl text-white/80 hover:bg-red-600/20 hover:text-white transition-all duration-300 w-full text-left hover:shadow-md"
           >
-            <svg
-              className="w-5 h-5 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
+            <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
+            </div>
             {isSidebarOpen && (
-              <span className="font-medium">Logout</span>
+              <span className="font-semibold text-sm">Logout</span>
             )}
           </button>
         </div>
@@ -308,10 +331,10 @@ function DashboardLayoutContent({
         {/* Top Bar */}
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-end">
           <div className="flex items-center gap-4">
-            {/* Active Bandage */}
-            <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            {/* Notifications */}
+            <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors group">
               <svg
-                className="w-6 h-6 text-[#435970]"
+                className="w-6 h-6 text-[#435970] group-hover:text-[#7895b3] transition-colors"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -320,11 +343,10 @@ function DashboardLayoutContent({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                 />
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
               </svg>
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></span>
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white shadow-sm"></span>
             </button>
 
             {/* User Profile */}

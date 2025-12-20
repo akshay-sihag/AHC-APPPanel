@@ -1,11 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
+import ConfirmModal from '@/app/components/ConfirmModal';
+import NotificationModal from '@/app/components/NotificationModal';
+import { getImageUrl } from '@/lib/image-utils';
 
 type Category = {
   id: number;
   title: string;
   tagline: string | null;
+  icon: string | null;
   medicineCount?: number;
 };
 
@@ -18,8 +23,15 @@ export default function CategoryPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     title: '',
-    tagline: ''
+    tagline: '',
+    icon: ''
   });
+  const [iconPreview, setIconPreview] = useState<string | null>(null);
+  const [iconFile, setIconFile] = useState<File | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<number | null>(null);
+  const [showNotification, setShowNotification] = useState(false);
+  const [notification, setNotification] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
   // Fetch categories from API
   useEffect(() => {
@@ -38,7 +50,12 @@ export default function CategoryPage() {
         setCategories(data.categories || []);
       } catch (error) {
         console.error('Error fetching categories:', error);
-        alert('Failed to load categories');
+        setNotification({
+          title: 'Error',
+          message: 'Failed to load categories',
+          type: 'error',
+        });
+        setShowNotification(true);
       } finally {
         setLoading(false);
       }
@@ -51,8 +68,11 @@ export default function CategoryPage() {
     setEditingCategory(null);
     setFormData({
       title: '',
-      tagline: ''
+      tagline: '',
+      icon: ''
     });
+    setIconPreview(null);
+    setIconFile(null);
     setIsModalOpen(true);
   };
 
@@ -60,19 +80,26 @@ export default function CategoryPage() {
     setEditingCategory(category);
     setFormData({
       title: category.title,
-      tagline: category.tagline || ''
+      tagline: category.tagline || '',
+      icon: category.icon || ''
     });
+    setIconPreview(category.icon || null);
+    setIconFile(null);
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this category?')) {
-      return;
-    }
+  const handleDeleteClick = (id: number) => {
+    setCategoryToDelete(id);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!categoryToDelete) return;
 
     try {
-      setDeletingId(id);
-      const response = await fetch(`/api/medicine-categories/${id}`, {
+      setDeletingId(categoryToDelete);
+      setShowDeleteModal(false);
+      const response = await fetch(`/api/medicine-categories/${categoryToDelete}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -83,12 +110,24 @@ export default function CategoryPage() {
       }
 
       // Remove from local state
-      setCategories(categories.filter(cat => cat.id !== id));
+      setCategories(categories.filter(cat => cat.id !== categoryToDelete));
+      setNotification({
+        title: 'Success',
+        message: 'Category deleted successfully',
+        type: 'success',
+      });
+      setShowNotification(true);
     } catch (error) {
       console.error('Error deleting category:', error);
-      alert(error instanceof Error ? error.message : 'Failed to delete category');
+      setNotification({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to delete category',
+        type: 'error',
+      });
+      setShowNotification(true);
     } finally {
       setDeletingId(null);
+      setCategoryToDelete(null);
     }
   };
 
@@ -96,12 +135,40 @@ export default function CategoryPage() {
     e.preventDefault();
     
     if (!formData.title.trim()) {
-      alert('Title is required');
+      setNotification({
+        title: 'Validation Error',
+        message: 'Title is required',
+        type: 'warning',
+      });
+      setShowNotification(true);
       return;
     }
 
     try {
       setSubmitting(true);
+
+      let iconUrl = formData.icon;
+
+      // If a new icon file is selected, upload it first
+      if (iconFile) {
+        const iconFormData = new FormData();
+        iconFormData.append('icon', iconFile);
+
+        const uploadResponse = await fetch('/api/medicine-categories/upload-icon', {
+          method: 'POST',
+          credentials: 'include',
+          body: iconFormData,
+        });
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json();
+          throw new Error(errorData.error || 'Failed to upload icon');
+        }
+
+        const uploadData = await uploadResponse.json();
+        iconUrl = uploadData.iconUrl;
+      }
+
       const url = editingCategory 
         ? `/api/medicine-categories/${editingCategory.id}`
         : '/api/medicine-categories';
@@ -117,6 +184,7 @@ export default function CategoryPage() {
         body: JSON.stringify({
           title: formData.title.trim(),
           tagline: formData.tagline.trim() || null,
+          icon: iconUrl || null,
         }),
       });
 
@@ -131,7 +199,7 @@ export default function CategoryPage() {
         // Update in local state
         setCategories(categories.map(cat =>
           cat.id === editingCategory.id
-            ? { ...cat, title: data.category.title, tagline: data.category.tagline }
+            ? { ...cat, title: data.category.title, tagline: data.category.tagline, icon: data.category.icon }
             : cat
         ));
       } else {
@@ -140,6 +208,7 @@ export default function CategoryPage() {
           id: data.category.id,
           title: data.category.title,
           tagline: data.category.tagline,
+          icon: data.category.icon,
         }]);
       }
 
@@ -147,11 +216,25 @@ export default function CategoryPage() {
       setEditingCategory(null);
       setFormData({
         title: '',
-        tagline: ''
+        tagline: '',
+        icon: ''
       });
+      setIconPreview(null);
+      setIconFile(null);
+      setNotification({
+        title: 'Success',
+        message: editingCategory ? 'Category updated successfully' : 'Category created successfully',
+        type: 'success',
+      });
+      setShowNotification(true);
     } catch (error) {
       console.error('Error saving category:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save category');
+      setNotification({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to save category',
+        type: 'error',
+      });
+      setShowNotification(true);
     } finally {
       setSubmitting(false);
     }
@@ -162,8 +245,11 @@ export default function CategoryPage() {
     setEditingCategory(null);
     setFormData({
       title: '',
-      tagline: ''
+      tagline: '',
+      icon: ''
     });
+    setIconPreview(null);
+    setIconFile(null);
   };
 
   return (
@@ -211,6 +297,9 @@ export default function CategoryPage() {
           <table className="w-full">
             <thead className="bg-[#dfedfb]">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider w-20">
+                  Icon
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
                   ID
                 </th>
@@ -228,7 +317,7 @@ export default function CategoryPage() {
             <tbody className="divide-y divide-[#dfedfb]">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center">
+                  <td colSpan={5} className="px-6 py-12 text-center">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#435970]"></div>
                       <span className="ml-3 text-[#7895b3]">Loading categories...</span>
@@ -237,13 +326,42 @@ export default function CategoryPage() {
                 </tr>
               ) : categories.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center">
+                  <td colSpan={5} className="px-6 py-12 text-center">
                     <p className="text-[#7895b3]">No categories found. Create your first category to get started.</p>
                   </td>
                 </tr>
               ) : (
                 categories.map((category) => (
                   <tr key={category.id} className="hover:bg-[#dfedfb]/20 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="w-12 h-12 bg-[#dfedfb] rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0">
+                        {category.icon ? (
+                          <Image
+                            src={getImageUrl(category.icon)}
+                            alt={category.title}
+                            width={48}
+                            height={48}
+                            className="object-cover w-full h-full"
+                            unoptimized
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              if (target.parentElement) {
+                                target.parentElement.innerHTML = `
+                                  <svg class="w-6 h-6 text-[#7895b3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                                  </svg>
+                                `;
+                              }
+                            }}
+                          />
+                        ) : (
+                          <svg className="w-6 h-6 text-[#7895b3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                          </svg>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-medium text-[#435970]">#{category.id}</span>
                     </td>
@@ -273,7 +391,7 @@ export default function CategoryPage() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleDelete(category.id)}
+                            onClick={() => handleDeleteClick(category.id)}
                             disabled={deletingId === category.id}
                             className="text-red-500 hover:text-red-700 transition-colors disabled:opacity-50 p-1"
                             aria-label="Delete category"
@@ -351,6 +469,60 @@ export default function CategoryPage() {
                 />
               </div>
 
+              {/* Category Icon Upload */}
+              <div>
+                <label htmlFor="icon" className="block text-sm font-medium text-[#435970] mb-2">
+                  Category Icon
+                </label>
+                <input
+                  type="file"
+                  id="icon"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setIconFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        const result = reader.result as string;
+                        setIconPreview(result);
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      // If no file selected, keep existing icon if editing
+                      setIconFile(null);
+                      if (editingCategory && formData.icon) {
+                        setIconPreview(formData.icon);
+                      } else {
+                        setIconPreview(null);
+                      }
+                    }
+                  }}
+                  className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#dfedfb] file:text-[#435970] hover:file:bg-[#7895b3] hover:file:text-white file:cursor-pointer"
+                />
+                {editingCategory && formData.icon && !iconPreview && (
+                  <p className="text-xs text-[#7895b3] mt-1">
+                    Current icon will be kept if no new icon is selected
+                  </p>
+                )}
+                {(iconPreview || (editingCategory && formData.icon)) && (
+                  <div className="mt-2 w-24 h-24 bg-[#dfedfb] rounded-lg overflow-hidden border border-[#dfedfb]">
+                    <Image
+                      src={iconPreview ? getImageUrl(iconPreview) : getImageUrl(formData.icon) || ''}
+                      alt="Icon Preview"
+                      width={96}
+                      height={96}
+                      className="object-cover w-full h-full"
+                      unoptimized
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
               {/* Form Actions */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
                 <button
@@ -371,6 +543,37 @@ export default function CategoryPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setCategoryToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Category"
+        message="Are you sure you want to delete this category? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        isLoading={deletingId !== null}
+      />
+
+      {/* Notification Modal */}
+      {notification && (
+        <NotificationModal
+          isOpen={showNotification}
+          onClose={() => {
+            setShowNotification(false);
+            setNotification(null);
+          }}
+          title={notification.title}
+          message={notification.message}
+          type={notification.type}
+          duration={3000}
+        />
       )}
     </div>
   );

@@ -6,6 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import RichTextEditor from '@/app/components/RichTextEditor';
 import { getImageUrl } from '@/lib/image-utils';
+import NotificationModal from '@/app/components/NotificationModal';
 
 export default function EditBlogPage() {
   const router = useRouter();
@@ -25,6 +26,8 @@ export default function EditBlogPage() {
   const [newTagName, setNewTagName] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showNotification, setShowNotification] = useState(false);
+  const [notification, setNotification] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
   useEffect(() => {
     const fetchBlog = async () => {
@@ -51,8 +54,15 @@ export default function EditBlogPage() {
         }
       } catch (error) {
         console.error('Error fetching blog:', error);
-        alert('Failed to load blog. Redirecting...');
-        router.push('/dashboard/blogs');
+        setNotification({
+          title: 'Error',
+          message: 'Failed to load blog. Redirecting...',
+          type: 'error',
+        });
+        setShowNotification(true);
+        setTimeout(() => {
+          router.push('/dashboard/blogs');
+        }, 2000);
       } finally {
         setLoading(false);
       }
@@ -77,13 +87,23 @@ export default function EditBlogPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.tagline || !formData.description || formData.tags.length === 0) {
-      alert('Please fill in all required fields and add at least one tag');
+      setNotification({
+        title: 'Validation Error',
+        message: 'Please fill in all required fields and add at least one tag',
+        type: 'warning',
+      });
+      setShowNotification(true);
       return;
     }
 
     // If no image is selected and no existing image, show error
     if (!imageFile && !formData.featuredImage) {
-      alert('Please select an image');
+      setNotification({
+        title: 'Validation Error',
+        message: 'Please select an image',
+        type: 'warning',
+      });
+      setShowNotification(true);
       return;
     }
 
@@ -132,7 +152,12 @@ export default function EditBlogPage() {
 
       router.push('/dashboard/blogs');
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to update blog');
+      setNotification({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to update blog',
+        type: 'error',
+      });
+      setShowNotification(true);
       console.error('Error updating blog:', error);
     } finally {
       setSubmitting(false);
@@ -344,6 +369,21 @@ export default function EditBlogPage() {
           </button>
         </div>
       </form>
+
+      {/* Notification Modal */}
+      {notification && (
+        <NotificationModal
+          isOpen={showNotification}
+          onClose={() => {
+            setShowNotification(false);
+            setNotification(null);
+          }}
+          title={notification.title}
+          message={notification.message}
+          type={notification.type}
+          duration={3000}
+        />
+      )}
     </div>
   );
 }

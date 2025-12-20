@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
         id: cat.id,
         title: cat.title,
         tagline: cat.tagline,
+        icon: cat.icon,
         medicineCount: cat._count.medicines,
         createdAt: cat.createdAt.toISOString(),
         updatedAt: cat.updatedAt.toISOString(),
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, tagline } = body;
+    const { title, tagline, icon } = body;
 
     // Validate required fields
     if (!title) {
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
       data: {
         title,
         tagline: tagline || null,
+        icon: icon || null,
       },
     });
 
@@ -123,6 +125,7 @@ export async function POST(request: NextRequest) {
         id: category.id,
         title: category.title,
         tagline: category.tagline,
+        icon: category.icon,
         createdAt: category.createdAt.toISOString(),
         updatedAt: category.updatedAt.toISOString(),
       },

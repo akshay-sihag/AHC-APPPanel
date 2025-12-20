@@ -183,6 +183,10 @@ export default function SettingsPage() {
     adminEmail: session?.user?.email || '',
     timezone: 'America/New_York',
     
+    // Display Units (for app system view only)
+    weightUnit: 'lbs',
+    heightUnit: 'inches',
+    
     // Security Settings
     sessionTimeout: 30,
     requireStrongPassword: true,
@@ -192,6 +196,10 @@ export default function SettingsPage() {
     woocommerceApiUrl: '',
     woocommerceApiKey: '',
     woocommerceApiSecret: '',
+    
+    // FCM Settings for Push Notifications
+    fcmServerKey: '',
+    fcmProjectId: '',
   });
 
   // Fetch settings on mount and update email when session is available
@@ -204,12 +212,16 @@ export default function SettingsPage() {
           setSettings(prev => ({
             adminEmail: session?.user?.email || prev.adminEmail,
             timezone: data.timezone || 'America/New_York',
+            weightUnit: data.weightUnit || 'lbs',
+            heightUnit: data.heightUnit || 'inches',
             sessionTimeout: data.sessionTimeout || 30,
             requireStrongPassword: data.requireStrongPassword ?? true,
             enableTwoFactor: data.enableTwoFactor ?? false,
             woocommerceApiUrl: data.woocommerceApiUrl || '',
             woocommerceApiKey: data.woocommerceApiKey || '',
             woocommerceApiSecret: data.woocommerceApiSecret || '',
+            fcmServerKey: data.fcmServerKey || '',
+            fcmProjectId: data.fcmProjectId || '',
           }));
         }
       } catch (error) {
@@ -332,12 +344,16 @@ export default function SettingsPage() {
       setSettings({
         adminEmail: 'admin@alternatehealthclub.com',
         timezone: 'America/New_York',
+        weightUnit: 'lbs',
+        heightUnit: 'inches',
         sessionTimeout: 30,
         requireStrongPassword: true,
         enableTwoFactor: false,
         woocommerceApiUrl: '',
         woocommerceApiKey: '',
         woocommerceApiSecret: '',
+        fcmServerKey: '',
+        fcmProjectId: '',
       });
     }
   };
@@ -419,6 +435,55 @@ export default function SettingsPage() {
                 <option value="America/Los_Angeles">Pacific Time (PT)</option>
                 <option value="UTC">UTC</option>
               </select>
+            </div>
+
+            {/* Display Units Section */}
+            <div className="pt-6 border-t border-[#dfedfb]">
+              <h5 className="text-base font-semibold text-[#435970] mb-4">Display Units</h5>
+              <p className="text-xs text-[#7895b3] mb-4">Configure weight and height units for display in the app system view. These settings do not affect API responses.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="weightUnit" className="block text-sm font-medium text-[#435970] mb-2">
+                    Weight Unit
+                  </label>
+                  <select
+                    id="weightUnit"
+                    value={settings.weightUnit}
+                    onChange={(e) => handleInputChange('weightUnit', e.target.value)}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] bg-white"
+                  >
+                    <option value="lbs">Pounds (lbs)</option>
+                    <option value="kg">Kilograms (kg)</option>
+                    <option value="g">Grams (g)</option>
+                  </select>
+                  <p className="text-xs text-[#7895b3] mt-1">Unit for displaying weight in the app</p>
+                </div>
+
+                <div>
+                  <label htmlFor="heightUnit" className="block text-sm font-medium text-[#435970] mb-2">
+                    Height Unit
+                  </label>
+                  <select
+                    id="heightUnit"
+                    value={settings.heightUnit}
+                    onChange={(e) => handleInputChange('heightUnit', e.target.value)}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] bg-white"
+                  >
+                    <option value="inches">Inches (in)</option>
+                    <option value="cm">Centimeters (cm)</option>
+                    <option value="m">Meters (m)</option>
+                    <option value="feet">Feet (ft)</option>
+                  </select>
+                  <p className="text-xs text-[#7895b3] mt-1">Unit for displaying height in the app</p>
+                </div>
+              </div>
+
+              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-800">
+                  <strong>Note:</strong> These unit settings only affect how data is displayed in the admin dashboard and app system view. API responses will continue to use the original units stored in the database.
+                </p>
+              </div>
             </div>
           </div>
           </div>
@@ -905,6 +970,55 @@ export default function SettingsPage() {
                 <li>Click "Add Key" to create a new API key</li>
                 <li>Set permissions to "Read/Write"</li>
                 <li>Copy the Consumer Key and Consumer Secret</li>
+              </ol>
+            </div>
+          </div>
+
+          {/* FCM Settings for Push Notifications */}
+          <div className="mt-8 pt-6 border-t border-[#dfedfb]">
+            <h5 className="text-base font-semibold text-[#435970] mb-4">Firebase Cloud Messaging (FCM) Settings</h5>
+            <p className="text-xs text-[#7895b3] mb-4">Configure FCM to send push notifications to Android app users.</p>
+            
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="fcmProjectId" className="block text-sm font-medium text-[#435970] mb-2">
+                  Firebase Project ID
+                </label>
+                <input
+                  type="text"
+                  id="fcmProjectId"
+                  value={settings.fcmProjectId}
+                  onChange={(e) => handleInputChange('fcmProjectId', e.target.value)}
+                  className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
+                  placeholder="your-firebase-project-id"
+                />
+                <p className="text-xs text-[#7895b3] mt-1">Your Firebase project ID from Firebase Console</p>
+              </div>
+              <div>
+                <label htmlFor="fcmServerKey" className="block text-sm font-medium text-[#435970] mb-2">
+                  FCM Server Key
+                </label>
+                <input
+                  type="password"
+                  id="fcmServerKey"
+                  value={settings.fcmServerKey}
+                  onChange={(e) => handleInputChange('fcmServerKey', e.target.value)}
+                  className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
+                  placeholder="AAAAxxxxxxx:APA91bH..."
+                />
+                <p className="text-xs text-[#7895b3] mt-1">FCM Server Key from Firebase Console → Project Settings → Cloud Messaging</p>
+              </div>
+            </div>
+
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800 font-medium mb-2">How to get your FCM credentials:</p>
+              <ol className="text-xs text-blue-700 list-decimal list-inside space-y-1">
+                <li>Go to Firebase Console (https://console.firebase.google.com)</li>
+                <li>Select your project (or create a new one)</li>
+                <li>Go to Project Settings (gear icon) → Cloud Messaging tab</li>
+                <li>Copy the "Server key" (under Cloud Messaging API (Legacy))</li>
+                <li>Copy the Project ID from the General tab</li>
+                <li>Note: For production, it's recommended to use a Service Account JSON file instead</li>
               </ol>
             </div>
           </div>

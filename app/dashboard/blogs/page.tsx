@@ -5,6 +5,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { getImageUrl } from '@/lib/image-utils';
+import ConfirmModal from '@/app/components/ConfirmModal';
+import NotificationModal from '@/app/components/NotificationModal';
 
 type Blog = {
   id: string;
@@ -25,6 +27,10 @@ export default function BlogsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [blogToDelete, setBlogToDelete] = useState<string | null>(null);
+  const [showNotification, setShowNotification] = useState(false);
+  const [notification, setNotification] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
   // Fetch blogs from API
   const fetchBlogs = useCallback(async () => {
@@ -64,14 +70,18 @@ export default function BlogsPage() {
     return matchesSearch;
   });
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this blog?')) {
-      return;
-    }
+  const handleDeleteClick = (id: string) => {
+    setBlogToDelete(id);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!blogToDelete) return;
 
     try {
-      setDeletingId(id);
-      const response = await fetch(`/api/blogs/${id}`, {
+      setDeletingId(blogToDelete);
+      setShowDeleteModal(false);
+      const response = await fetch(`/api/blogs/${blogToDelete}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -82,11 +92,23 @@ export default function BlogsPage() {
 
       // Refresh blogs list
       await fetchBlogs();
+      setNotification({
+        title: 'Success',
+        message: 'Blog deleted successfully',
+        type: 'success',
+      });
+      setShowNotification(true);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete blog');
+      setNotification({
+        title: 'Error',
+        message: err instanceof Error ? err.message : 'Failed to delete blog',
+        type: 'error',
+      });
+      setShowNotification(true);
       console.error('Error deleting blog:', err);
     } finally {
       setDeletingId(null);
+      setBlogToDelete(null);
     }
   };
 
@@ -313,7 +335,7 @@ export default function BlogsPage() {
                           </svg>
                         </Link>
                         <button
-                          onClick={() => handleDelete(blog.id)}
+                          onClick={() => handleDeleteClick(blog.id)}
                           disabled={deletingId === blog.id}
                           className="text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
                           aria-label="Delete blog"
@@ -354,6 +376,37 @@ export default function BlogsPage() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setBlogToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Blog"
+        message="Are you sure you want to delete this blog? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        isLoading={deletingId !== null}
+      />
+
+      {/* Notification Modal */}
+      {notification && (
+        <NotificationModal
+          isOpen={showNotification}
+          onClose={() => {
+            setShowNotification(false);
+            setNotification(null);
+          }}
+          title={notification.title}
+          message={notification.message}
+          type={notification.type}
+          duration={3000}
+        />
+      )}
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getImageUrl } from '@/lib/image-utils';
+import ConfirmModal from '@/app/components/ConfirmModal';
+import NotificationModal from '@/app/components/NotificationModal';
 
 type Category = {
   id: number;
@@ -39,6 +41,10 @@ export default function MedicinesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [medicineToDelete, setMedicineToDelete] = useState<string | null>(null);
+  const [showNotification, setShowNotification] = useState(false);
+  const [notification, setNotification] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
   // Fetch categories and medicines
   useEffect(() => {
@@ -65,7 +71,12 @@ export default function MedicinesPage() {
         }
       } catch (error) {
         console.error('Error fetching data:', error);
-        alert('Failed to load data');
+        setNotification({
+          title: 'Error',
+          message: 'Failed to load data',
+          type: 'error',
+        });
+        setShowNotification(true);
       } finally {
         setLoading(false);
       }
@@ -139,14 +150,18 @@ export default function MedicinesPage() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this medicine?')) {
-      return;
-    }
+  const handleDeleteClick = (id: string) => {
+    setMedicineToDelete(id);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!medicineToDelete) return;
 
     try {
-      setDeletingId(id);
-      const response = await fetch(`/api/medicines/${id}`, {
+      setDeletingId(medicineToDelete);
+      setShowDeleteModal(false);
+      const response = await fetch(`/api/medicines/${medicineToDelete}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -157,12 +172,24 @@ export default function MedicinesPage() {
       }
 
       // Remove from local state
-      setMedicines(medicines.filter(m => m.id !== id));
+      setMedicines(medicines.filter(m => m.id !== medicineToDelete));
+      setNotification({
+        title: 'Success',
+        message: 'Medicine deleted successfully',
+        type: 'success',
+      });
+      setShowNotification(true);
     } catch (error) {
       console.error('Error deleting medicine:', error);
-      alert(error instanceof Error ? error.message : 'Failed to delete medicine');
+      setNotification({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to delete medicine',
+        type: 'error',
+      });
+      setShowNotification(true);
     } finally {
       setDeletingId(null);
+      setMedicineToDelete(null);
     }
   };
 
@@ -170,19 +197,34 @@ export default function MedicinesPage() {
     e.preventDefault();
     
     if (!formData.categoryId || !formData.title.trim()) {
-      alert('Please fill in all required fields');
+      setNotification({
+        title: 'Validation Error',
+        message: 'Please fill in all required fields',
+        type: 'warning',
+      });
+      setShowNotification(true);
       return;
     }
 
     // If creating new medicine, image is required
     if (!editingMedicine && !imageFile) {
-      alert('Please select an image');
+      setNotification({
+        title: 'Validation Error',
+        message: 'Please select an image',
+        type: 'warning',
+      });
+      setShowNotification(true);
       return;
     }
 
     // If editing and no image file selected, keep existing image
     if (editingMedicine && !imageFile && !formData.image) {
-      alert('Please select an image or keep the existing one');
+      setNotification({
+        title: 'Validation Error',
+        message: 'Please select an image or keep the existing one',
+        type: 'warning',
+      });
+      setShowNotification(true);
       return;
     }
 
@@ -264,9 +306,20 @@ export default function MedicinesPage() {
       });
       setImagePreview(null);
       setImageFile(null);
+      setNotification({
+        title: 'Success',
+        message: editingMedicine ? 'Medicine updated successfully' : 'Medicine created successfully',
+        type: 'success',
+      });
+      setShowNotification(true);
     } catch (error) {
       console.error('Error saving medicine:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save medicine');
+      setNotification({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to save medicine',
+        type: 'error',
+      });
+      setShowNotification(true);
     } finally {
       setSubmitting(false);
     }
@@ -497,7 +550,7 @@ export default function MedicinesPage() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => handleDelete(medicine.id)}
+                          onClick={() => handleDeleteClick(medicine.id)}
                           disabled={deletingId === medicine.id}
                           className="text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
                           aria-label="Delete medicine"
@@ -724,6 +777,37 @@ export default function MedicinesPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setMedicineToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Medicine"
+        message="Are you sure you want to delete this medicine? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        isLoading={deletingId !== null}
+      />
+
+      {/* Notification Modal */}
+      {notification && (
+        <NotificationModal
+          isOpen={showNotification}
+          onClose={() => {
+            setShowNotification(false);
+            setNotification(null);
+          }}
+          title={notification.title}
+          message={notification.message}
+          type={notification.type}
+          duration={3000}
+        />
       )}
     </div>
   );

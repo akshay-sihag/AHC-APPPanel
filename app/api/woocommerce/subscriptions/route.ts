@@ -106,58 +106,67 @@ export async function GET(request: NextRequest) {
 
     // First, try to get customer by email to get customer ID
     // This ensures we can fetch subscriptions reliably
-    const customersUrl = new URL(`${apiUrl}/customers`);
-    customersUrl.searchParams.append('email', normalizedEmail);
-    customersUrl.searchParams.append('per_page', '1');
-
-    const customersResponse = await fetch(customersUrl.toString(), {
-      method: 'GET',
-      headers: authHeaders,
-    });
-
     let customerId: number | null = null;
+    
+    try {
+      const customersUrl = new URL(`${apiUrl}/customers`);
+      customersUrl.searchParams.append('email', normalizedEmail);
+      customersUrl.searchParams.append('per_page', '1');
 
-    if (customersResponse.ok) {
-      // Check if response is JSON before parsing
-      const customersContentType = customersResponse.headers.get('content-type');
-      const isCustomersJson = customersContentType && customersContentType.includes('application/json');
-      
-      if (isCustomersJson) {
-        try {
-          const customers = await customersResponse.json();
-          const customersArray = Array.isArray(customers) ? customers : [customers];
-          if (customersArray.length > 0 && customersArray[0].id) {
-            customerId = customersArray[0].id;
+      const customersResponse = await fetch(customersUrl.toString(), {
+        method: 'GET',
+        headers: authHeaders,
+      });
+
+      if (customersResponse.ok) {
+        // Check if response is JSON before parsing
+        const customersContentType = customersResponse.headers.get('content-type');
+        const isCustomersJson = customersContentType && customersContentType.includes('application/json');
+        
+        if (isCustomersJson) {
+          try {
+            const customers = await customersResponse.json();
+            const customersArray = Array.isArray(customers) ? customers : [customers];
+            if (customersArray.length > 0 && customersArray[0].id) {
+              customerId = parseInt(customersArray[0].id);
+              console.log(`Found customer ID ${customerId} for email ${normalizedEmail}`);
+            } else {
+              console.log(`No customer found for email ${normalizedEmail}, will filter subscriptions by email`);
+            }
+          } catch (parseError) {
+            console.error('Failed to parse customers response:', parseError);
+            // Continue without customer ID - will filter by email
           }
-        } catch (parseError) {
-          console.error('Failed to parse customers response:', parseError);
-          // Continue without customer ID - will use email fallback
+        } else {
+          // If customers endpoint returns HTML, log it but continue
+          const errorText = await customersResponse.text();
+          console.warn('WooCommerce customers API returned non-JSON response. Will filter subscriptions by email.');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Response preview:', errorText.substring(0, 200));
+          }
         }
       } else {
-        // If customers endpoint returns HTML, log it but continue
-        const errorText = await customersResponse.text();
-        console.warn('WooCommerce customers API returned non-JSON response. Will use email for subscriptions lookup.');
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Response preview:', errorText.substring(0, 200));
-        }
-        // If we get HTML, it might mean the API URL is wrong - but continue anyway
+        // Customer lookup failed, but continue - we'll filter by email
+        console.log(`Customer lookup returned ${customersResponse.status}, will filter subscriptions by email`);
       }
+    } catch (customerError) {
+      console.error('Error fetching customer:', customerError);
+      // Continue without customer ID - will filter by email
     }
 
     // Fetch subscriptions from WooCommerce API
     // WooCommerce Subscriptions plugin uses /subscriptions endpoint
-    // Try both v3 and v1 endpoints for compatibility
+    // The customer parameter only accepts customer ID, not email
     let subscriptionsUrl: URL;
     let woocommerceResponse: Response;
     let subscriptions: any;
 
     // Try v3 endpoint first (newer WooCommerce versions)
     subscriptionsUrl = new URL(`${apiUrl}/subscriptions`);
+    
+    // Only use customer ID if we have it, otherwise fetch all and filter by email
     if (customerId) {
       subscriptionsUrl.searchParams.append('customer', customerId.toString());
-    } else {
-      // Fallback: try with email
-      subscriptionsUrl.searchParams.append('customer', normalizedEmail);
     }
     subscriptionsUrl.searchParams.append('per_page', '100'); // Get up to 100 subscriptions
 
@@ -172,8 +181,6 @@ export async function GET(request: NextRequest) {
       subscriptionsUrl = new URL(`${apiUrlV1}/subscriptions`);
       if (customerId) {
         subscriptionsUrl.searchParams.append('customer', customerId.toString());
-      } else {
-        subscriptionsUrl.searchParams.append('customer', normalizedEmail);
       }
       subscriptionsUrl.searchParams.append('per_page', '100');
 
@@ -277,11 +284,64 @@ export async function GET(request: NextRequest) {
     }
 
     // Handle case where WooCommerce returns a single subscription object instead of array
-    const subscriptionsArray = Array.isArray(subscriptions) ? subscriptions : [subscriptions];
+    let subscriptionsArray = Array.isArray(subscriptions) ? subscriptions : [subscriptions];
+
+    // If we don't have customerId, filter subscriptions by email
+    // Check both billing.email and customer_email fields
+    if (!customerId && subscriptionsArray.length > 0) {
+      subscriptionsArray = subscriptionsArray.filter((sub: any) => {
+        const subEmail = (
+          sub.billing?.email?.toLowerCase().trim() ||
+          sub.customer_email?.toLowerCase().trim() ||
+          sub.email?.toLowerCase().trim() ||
+          ''
+        );
+        return subEmail === normalizedEmail;
+      });
+    }
+
+    // If we have customerId but no subscriptions, try fetching without customer filter
+    // and then filter by email (in case customer ID lookup was incorrect)
+    if (customerId && subscriptionsArray.length === 0) {
+      console.log('No subscriptions found with customer ID, trying to fetch all and filter by email');
+      const allSubscriptionsUrl = new URL(`${apiUrl}/subscriptions`);
+      allSubscriptionsUrl.searchParams.append('per_page', '100');
+      
+      const allSubscriptionsResponse = await fetch(allSubscriptionsUrl.toString(), {
+        method: 'GET',
+        headers: authHeaders,
+      });
+
+      if (allSubscriptionsResponse.ok) {
+        const contentType = allSubscriptionsResponse.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        
+        if (isJson) {
+          try {
+            const allSubscriptions = await allSubscriptionsResponse.json();
+            const allSubscriptionsArray = Array.isArray(allSubscriptions) ? allSubscriptions : [allSubscriptions];
+            
+            // Filter by email
+            subscriptionsArray = allSubscriptionsArray.filter((sub: any) => {
+              const subEmail = (
+                sub.billing?.email?.toLowerCase().trim() ||
+                sub.customer_email?.toLowerCase().trim() ||
+                sub.email?.toLowerCase().trim() ||
+                ''
+              );
+              return subEmail === normalizedEmail;
+            });
+          } catch (parseError) {
+            console.error('Failed to parse all subscriptions response:', parseError);
+          }
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
       email: normalizedEmail,
+      customerId: customerId || null,
       count: subscriptionsArray.length,
       subscriptions: subscriptionsArray,
     });
