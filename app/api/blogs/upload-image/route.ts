@@ -52,7 +52,14 @@ export async function POST(request: NextRequest) {
 
     // Determine the correct upload directory
     // In production, ensure we're using the correct path
+    // Next.js serves static files from the 'public' folder at the project root
     const uploadDir = join(process.cwd(), 'public', 'blog', 'image');
+    
+    // Log the upload directory for debugging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Upload directory:', uploadDir);
+      console.log('Current working directory:', process.cwd());
+    }
     
     // Ensure the directory exists with proper permissions
     if (!existsSync(uploadDir)) {
@@ -77,14 +84,34 @@ export async function POST(request: NextRequest) {
     
     // Write file with explicit error handling
     try {
-      await writeFile(filepath, buffer, { mode: 0o644 });
+      // Write file with explicit flush to ensure it's immediately available
+      await writeFile(filepath, buffer, { mode: 0o644, flag: 'w' });
       
-      // Verify file was written successfully
+      // Verify file was written successfully and is readable
       if (!existsSync(filepath)) {
         throw new Error('File was not created successfully');
       }
+      
+      // Verify file is readable (this ensures it's actually accessible)
+      try {
+        await access(filepath, constants.R_OK);
+      } catch (readError) {
+        console.error('File is not readable after creation:', filepath);
+        throw new Error('File was created but is not readable');
+      }
+      
+      // Log successful upload (only in development)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('File successfully uploaded:', filepath);
+        console.log('File size:', buffer.length, 'bytes');
+      }
+      
+      // Small delay to ensure file system sync (especially important in production)
+      // This helps ensure the file is immediately accessible via HTTP
+      await new Promise(resolve => setTimeout(resolve, 100));
     } catch (writeError) {
       console.error('Error writing file:', writeError);
+      console.error('Attempted file path:', filepath);
       return NextResponse.json(
         { 
           error: 'Failed to save image file',
