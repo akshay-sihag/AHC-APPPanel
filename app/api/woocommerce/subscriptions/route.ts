@@ -413,13 +413,47 @@ export async function POST(request: NextRequest) {
     }
 
     // Get request body
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      return NextResponse.json(
+        { 
+          error: 'Invalid JSON in request body',
+          details: process.env.NODE_ENV === 'development' && parseError instanceof Error
+            ? parseError.message
+            : undefined
+        },
+        { status: 400 }
+      );
+    }
+    
+    console.log('Subscription management request:', {
+      subscriptionId: body.subscriptionId,
+      email: body.email,
+      action: body.action,
+      hasUpdateData: !!body.updateData,
+    });
+    
     const { subscriptionId, email, action, updateData } = body;
 
     // Validate required fields
     if (!subscriptionId) {
       return NextResponse.json(
         { error: 'Subscription ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Ensure subscriptionId is a number (handle string conversion)
+    const subscriptionIdNum = typeof subscriptionId === 'string' 
+      ? parseInt(subscriptionId, 10) 
+      : parseInt(String(subscriptionId), 10);
+    
+    if (isNaN(subscriptionIdNum)) {
+      return NextResponse.json(
+        { error: 'Subscription ID must be a valid number' },
         { status: 400 }
       );
     }
@@ -494,7 +528,8 @@ export async function POST(request: NextRequest) {
     };
 
     // First, verify the subscription exists and belongs to the user
-    let subscriptionUrl = `${apiUrl}/subscriptions/${subscriptionId}`;
+    // Use the numeric subscription ID
+    let subscriptionUrl = `${apiUrl}/subscriptions/${subscriptionIdNum}`;
     
     // Try v3 endpoint first
     let subscriptionResponse = await fetch(subscriptionUrl, {
@@ -595,14 +630,67 @@ export async function POST(request: NextRequest) {
     let updatePayload: any = {};
     const actionLower = action.toLowerCase();
 
+    // Check current subscription status to validate action
+    const currentStatus = subscription.status?.toLowerCase() || '';
+    
     if (actionLower === 'cancel') {
       // Cancel subscription - set status to cancelled
+      if (currentStatus === 'cancelled') {
+        return NextResponse.json(
+          { 
+            error: 'Subscription is already cancelled',
+            currentStatus: subscription.status,
+            subscription: subscription
+          },
+          { status: 400 }
+        );
+      }
       updatePayload = { status: 'cancelled' };
     } else if (actionLower === 'pause') {
       // Pause subscription - set status to on-hold
+      // Check if already paused
+      if (currentStatus === 'on-hold' || currentStatus === 'paused') {
+        return NextResponse.json({
+          success: true,
+          message: 'Subscription is already paused',
+          subscription: subscription
+        });
+      }
+      // Only allow pausing active subscriptions
+      if (currentStatus !== 'active') {
+        return NextResponse.json(
+          { 
+            error: `Subscription cannot be paused. Current status: ${subscription.status}`,
+            details: 'Only active subscriptions can be paused.',
+            currentStatus: subscription.status,
+            allowedStatuses: ['active']
+          },
+          { status: 400 }
+        );
+      }
       updatePayload = { status: 'on-hold' };
     } else if (actionLower === 'resume') {
       // Resume subscription - set status to active
+      // Check if already active
+      if (currentStatus === 'active') {
+        return NextResponse.json({
+          success: true,
+          message: 'Subscription is already active',
+          subscription: subscription
+        });
+      }
+      // Only allow resuming paused/on-hold subscriptions
+      if (currentStatus !== 'on-hold' && currentStatus !== 'paused') {
+        return NextResponse.json(
+          { 
+            error: `Subscription cannot be resumed. Current status: ${subscription.status}`,
+            details: 'Only paused (on-hold) subscriptions can be resumed.',
+            currentStatus: subscription.status,
+            allowedStatuses: ['on-hold', 'paused']
+          },
+          { status: 400 }
+        );
+      }
       updatePayload = { status: 'active' };
     } else if (actionLower === 'update') {
       // Update subscription with provided data
@@ -615,7 +703,14 @@ export async function POST(request: NextRequest) {
       updatePayload = updateData;
     }
 
-    // Update the subscription
+    // Update the subscription using PUT method
+    // WooCommerce Subscriptions typically uses PUT /subscriptions/{id} with status update
+    console.log(`Attempting to ${actionLower} subscription ${subscriptionIdNum} (original: ${subscriptionId})`, {
+      currentStatus: subscription.status,
+      updatePayload,
+      subscriptionUrl,
+    });
+
     const updateResponse = await fetch(subscriptionUrl, {
       method: 'PUT',
       headers: authHeaders,
@@ -629,10 +724,26 @@ export async function POST(request: NextRequest) {
     if (!updateResponse.ok) {
       const errorText = await updateResponse.text();
       console.error('WooCommerce update subscription error:', {
+        subscriptionId: subscriptionIdNum,
+        originalSubscriptionId: subscriptionId,
+        action: actionLower,
+        currentStatus: subscription.status,
         status: updateResponse.status,
         statusText: updateResponse.statusText,
-        error: errorText.substring(0, 500),
+        error: errorText.substring(0, 1000),
+        updatePayload,
+        subscriptionUrl,
       });
+
+      // Try to parse error if it's JSON
+      let errorDetails: any = {};
+      try {
+        if (isUpdateJson) {
+          errorDetails = JSON.parse(errorText);
+        }
+      } catch (e) {
+        // Not JSON, use raw text
+      }
 
       if (!isUpdateJson && errorText.includes('<!DOCTYPE')) {
         return NextResponse.json(
@@ -646,11 +757,24 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Return more detailed error information
+      const errorMessage = errorDetails.message || errorDetails.error || `Failed to ${action} subscription in WooCommerce`;
+      const errorCode = errorDetails.code || errorDetails.error_code || null;
+
       return NextResponse.json(
         {
-          error: `Failed to ${action} subscription in WooCommerce`,
+          error: errorMessage,
+          errorCode: errorCode,
+          subscriptionId: subscriptionIdNum,
+          currentStatus: subscription.status,
+          attemptedAction: actionLower,
           details: process.env.NODE_ENV === 'development' 
-            ? `WooCommerce API returned ${updateResponse.status}: ${updateResponse.statusText}` 
+            ? {
+                wooCommerceStatus: updateResponse.status,
+                wooCommerceStatusText: updateResponse.statusText,
+                errorResponse: errorText.substring(0, 500),
+                updatePayload,
+              }
             : undefined,
         },
         { status: updateResponse.status || 500 }

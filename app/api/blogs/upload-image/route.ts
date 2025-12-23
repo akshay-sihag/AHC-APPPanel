@@ -5,6 +5,7 @@ import { writeFile, mkdir, access } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { constants } from 'fs';
+import { getImageUrl } from '@/lib/image-utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -123,11 +124,13 @@ export async function POST(request: NextRequest) {
 
     // Return the public URL path (normalized)
     // Ensure the path starts with / and doesn't have double slashes
-    const imageUrl = `/blog/image/${filename}`.replace(/\/+/g, '/');
+    const relativePath = `/blog/image/${filename}`.replace(/\/+/g, '/');
+    const imageUrl = getImageUrl(relativePath, request.url, true); // absolute URL using NEXT_PUBLIC_BASE_URL if set
 
     return NextResponse.json({
       success: true,
-      imageUrl,
+      imageUrl,        // Absolute URL for mobile/web usage
+      relativePath,    // Relative path for internal use if needed
       message: 'Image uploaded successfully',
     });
   } catch (error) {
