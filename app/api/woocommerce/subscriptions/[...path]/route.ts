@@ -6,7 +6,7 @@ import { NextRequest } from 'next/server';
  * This handles cases where the Flutter app incorrectly appends paths like /wp-json/wc/v3
  * to the subscriptions endpoint. It redirects to the correct endpoint while preserving query parameters.
  */
-export async function GET(request: NextRequest) {
+async function forwardToMainRoute(request: NextRequest) {
   // Extract query parameters (especially email) from the original request
   const url = new URL(request.url);
   const searchParams = url.searchParams;
@@ -30,8 +30,22 @@ export async function GET(request: NextRequest) {
     body: request.body,
   });
   
-  // Import and call the main route handler
-  const { GET: mainGetHandler } = await import('../route');
-  return mainGetHandler(rewriteRequest);
+  // Import and call the main route handler based on method
+  const mainRoute = await import('../route');
+  if (request.method === 'GET' && mainRoute.GET) {
+    return mainRoute.GET(rewriteRequest);
+  } else if (request.method === 'POST' && mainRoute.POST) {
+    return mainRoute.POST(rewriteRequest);
+  } else {
+    return new Response('Method not allowed', { status: 405 });
+  }
+}
+
+export async function GET(request: NextRequest) {
+  return forwardToMainRoute(request);
+}
+
+export async function POST(request: NextRequest) {
+  return forwardToMainRoute(request);
 }
 
