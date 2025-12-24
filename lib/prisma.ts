@@ -1,4 +1,4 @@
-import { PrismaClient } from './generated/prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
@@ -6,32 +6,16 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// Create PostgreSQL connection pool
+// Get DATABASE_URL from environment
 let connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   throw new Error('DATABASE_URL environment variable is not set');
 }
 
-// Ensure UTF-8 encoding is set in connection string
-// Add client_encoding=UTF8 if not already present
-if (!connectionString.includes('client_encoding')) {
-  const separator = connectionString.includes('?') ? '&' : '?';
-  connectionString = `${connectionString}${separator}client_encoding=UTF8`;
-}
+// Create PostgreSQL connection pool
+const pool = new Pool({ connectionString });
 
-const pool = new Pool({ 
-  connectionString,
-});
-
-// Ensure all connections use UTF-8 encoding (backup method)
-pool.on('connect', async (client) => {
-  try {
-    await client.query('SET client_encoding TO UTF8');
-  } catch (error) {
-    // Silently fail - encoding might already be set via connection string
-  }
-});
-
+// Create Prisma adapter
 const adapter = new PrismaPg(pool);
 
 export const prisma =

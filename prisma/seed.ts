@@ -1,20 +1,20 @@
-import { PrismaClient } from '../lib/generated/prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 
-// Create PostgreSQL connection pool
+// Get DATABASE_URL from environment
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   throw new Error('DATABASE_URL environment variable is not set');
 }
 
+// Create PostgreSQL connection pool
 const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
 
-const prisma = new PrismaClient({
-  adapter,
-});
+// Create Prisma adapter and client
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   // Default admin credentials
