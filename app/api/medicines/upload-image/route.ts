@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-config';
-import { writeFile, mkdir, access } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
-import { constants } from 'fs';
-import { getImageUrl } from '@/lib/image-utils';
+import { uploadToCloudinary, isCloudinaryConfigured } from '@/lib/cloudinary';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +11,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Unauthorized. Admin access required.' },
         { status: 401 }
+      );
+    }
+
+    // Check if Cloudinary is configured
+    if (!isCloudinaryConfigured()) {
+      return NextResponse.json(
+        { 
+          error: 'Image storage not configured',
+          details: 'Please configure Cloudinary credentials in .env (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET)'
+        },
+        { status: 500 }
       );
     }
 
@@ -48,89 +55,19 @@ export async function POST(request: NextRequest) {
     // Create unique filename
     const timestamp = Date.now();
     const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const extension = originalName.split('.').pop() || 'jpg';
     const filename = `${timestamp}_${originalName}`;
 
-    // Determine the correct upload directory
-    // In production, ensure we're using the correct path
-    // Next.js serves static files from the 'public' folder at the project root
-    const uploadDir = join(process.cwd(), 'public', 'medicine', 'images');
-    
-    // Log the upload directory for debugging (only in development)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Upload directory:', uploadDir);
-      console.log('Current working directory:', process.cwd());
-    }
-    
-    // Ensure the directory exists with proper permissions
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true, mode: 0o755 });
-    } else {
-      // Verify the directory is writable
-      try {
-        await access(uploadDir, constants.W_OK);
-      } catch (accessError) {
-        console.error('Upload directory is not writable:', uploadDir);
-        return NextResponse.json(
-          { error: 'Upload directory is not writable. Please check server permissions.' },
-          { status: 500 }
-        );
-      }
-    }
-
-    // Convert file to buffer and save
+    // Convert file to buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const filepath = join(uploadDir, filename);
-    
-    // Write file with explicit error handling
-    try {
-      // Write file with explicit flush to ensure it's immediately available
-      await writeFile(filepath, buffer, { mode: 0o644, flag: 'w' });
-      
-      // Verify file was written successfully and is readable
-      if (!existsSync(filepath)) {
-        throw new Error('File was not created successfully');
-      }
-      
-      // Verify file is readable (this ensures it's actually accessible)
-      try {
-        await access(filepath, constants.R_OK);
-      } catch (readError) {
-        console.error('File is not readable after creation:', filepath);
-        throw new Error('File was created but is not readable');
-      }
-      
-      // Log successful upload (only in development)
-      if (process.env.NODE_ENV === 'development') {
-        console.log('File successfully uploaded:', filepath);
-        console.log('File size:', buffer.length, 'bytes');
-      }
-      
-      // Small delay to ensure file system sync (especially important in production)
-      // This helps ensure the file is immediately accessible via HTTP
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } catch (writeError) {
-      console.error('Error writing file:', writeError);
-      console.error('Attempted file path:', filepath);
-      return NextResponse.json(
-        { 
-          error: 'Failed to save image file',
-          details: process.env.NODE_ENV === 'development' ? (writeError instanceof Error ? writeError.message : 'Unknown error') : undefined
-        },
-        { status: 500 }
-      );
-    }
 
-    // Return the public URL path (normalized)
-    // Ensure the path starts with / and doesn't have double slashes
-    const relativePath = `/medicine/images/${filename}`.replace(/\/+/g, '/');
-    const imageUrl = getImageUrl(relativePath, request.url, true); // absolute URL using NEXT_PUBLIC_BASE_URL if set
+    // Upload to Cloudinary
+    const result = await uploadToCloudinary(buffer, filename, 'ahc-medicine');
 
     return NextResponse.json({
       success: true,
-      imageUrl,       // Absolute URL for mobile/web usage
-      relativePath,   // Relative path for internal use if needed
+      imageUrl: result.secure_url, // Full HTTPS URL that works everywhere
+      publicId: result.public_id,  // For deletion if needed
       message: 'Image uploaded successfully',
     });
   } catch (error) {
@@ -138,10 +75,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         error: 'An error occurred while uploading image',
-        details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : 'Unknown error') : undefined
+        details: process.env.NODE_ENV === 'development' && error instanceof Error 
+          ? error.message 
+          : undefined
       },
       { status: 500 }
     );
   }
 }
-

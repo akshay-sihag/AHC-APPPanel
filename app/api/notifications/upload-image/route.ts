@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-config';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { uploadToCloudinary, isCloudinaryConfigured } from '@/lib/cloudinary';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +11,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Unauthorized. Admin access required.' },
         { status: 401 }
+      );
+    }
+
+    // Check if Cloudinary is configured
+    if (!isCloudinaryConfigured()) {
+      return NextResponse.json(
+        { 
+          error: 'Image storage not configured',
+          details: 'Please configure Cloudinary credentials in .env (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET)'
+        },
+        { status: 500 }
       );
     }
 
@@ -46,36 +55,31 @@ export async function POST(request: NextRequest) {
     // Create unique filename
     const timestamp = Date.now();
     const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const extension = originalName.split('.').pop() || 'jpg';
     const filename = `${timestamp}_${originalName}`;
 
-    // Ensure the directory exists
-    const uploadDir = join(process.cwd(), 'public', 'notifications', 'images');
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
-    }
-
-    // Convert file to buffer and save
+    // Convert file to buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const filepath = join(uploadDir, filename);
-    
-    await writeFile(filepath, buffer);
 
-    // Return the public URL path
-    const imageUrl = `/notifications/images/${filename}`;
+    // Upload to Cloudinary
+    const result = await uploadToCloudinary(buffer, filename, 'ahc-notifications');
 
     return NextResponse.json({
       success: true,
-      imageUrl,
+      imageUrl: result.secure_url, // Full HTTPS URL that works everywhere
+      publicId: result.public_id,  // For deletion if needed
       message: 'Image uploaded successfully',
     });
   } catch (error) {
     console.error('Image upload error:', error);
     return NextResponse.json(
-      { error: 'An error occurred while uploading image' },
+      { 
+        error: 'An error occurred while uploading image',
+        details: process.env.NODE_ENV === 'development' && error instanceof Error 
+          ? error.message 
+          : undefined
+      },
       { status: 500 }
     );
   }
 }
-
