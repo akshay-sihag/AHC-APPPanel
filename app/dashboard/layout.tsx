@@ -76,7 +76,6 @@ function DashboardLayoutContent({
     { name: 'Medicines', href: '/dashboard/medicines', icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', hasSubmenu: true, submenuKey: 'medicines' },
     { name: 'Blogs', href: '/dashboard/blogs', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z', hasSubmenu: false },
     { name: 'Notifications', href: '/dashboard/notifications', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9', hasSubmenu: false },
-    { name: 'FAQ', href: '/dashboard/faq', icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', hasSubmenu: false },
     { name: 'Settings', href: '/dashboard/settings', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4', hasSubmenu: false },
   ];
 
@@ -143,7 +142,7 @@ function DashboardLayoutContent({
         {/* Navigation Menu */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map((item) => {
-            const isActive = pathname === item.href || (item.href === '/dashboard/medicines' && pathname.startsWith('/dashboard/medicines')) || (item.href === '/dashboard/faq' && pathname.startsWith('/dashboard/faq'));
+            const isActive = pathname === item.href || (item.href === '/dashboard/medicines' && pathname.startsWith('/dashboard/medicines'));
             const isExpanded = item.hasSubmenu && expandedMenus.includes(item.submenuKey || '');
             const currentCategory = searchParams.get('category');
 
@@ -332,6 +331,24 @@ function DashboardLayoutContent({
         {/* Top Bar */}
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-end">
           <div className="flex items-center gap-4">
+            {/* Notifications */}
+            <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors group">
+              <svg
+                className="w-6 h-6 text-[#435970] group-hover:text-[#7895b3] transition-colors"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                />
+              </svg>
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white shadow-sm"></span>
+            </button>
+
             {/* User Profile */}
             <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
               <div className="w-10 h-10 bg-[#435970] rounded-full flex items-center justify-center text-white font-semibold text-sm">

@@ -281,19 +281,3 @@ model MedicationLog {
   @@index([takenAt])
   @@map("medication_logs")
 }
-
-model FAQ {
-  id          String   @id @default(cuid())
-  question    String   // FAQ question
-  answer      String   @db.Text // FAQ answer
-  order       Int      @default(0) // Display order
-  isActive    Boolean  @default(true) // Whether FAQ is active/visible
-  
-  // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@index([isActive])
-  @@index([order])
-  @@map("faqs")
-}
