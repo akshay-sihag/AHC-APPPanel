@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 
 function DashboardLayoutContent({
   children,
@@ -301,8 +301,8 @@ function DashboardLayoutContent({
 
         {/* Sidebar Footer */}
         <div className="p-4 border-t border-[#7895b3]/30">
-          <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
+          <Link
+            href="/logout"
             className="group flex items-center gap-3 px-4 py-3 rounded-xl text-white/80 hover:bg-red-600/30 hover:text-white transition-all duration-300 w-full text-left hover:shadow-md"
           >
             <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
@@ -323,7 +323,7 @@ function DashboardLayoutContent({
             {isSidebarOpen && (
               <span className="font-semibold text-sm">Logout</span>
             )}
-          </button>
+          </Link>
         </div>
       </aside>
 
