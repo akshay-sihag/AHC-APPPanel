@@ -13,6 +13,7 @@ This document provides comprehensive documentation for all APIs available for bu
    - [Blogs](#blogs)
    - [Medicines](#medicines)
    - [Medicine Categories](#medicine-categories)
+   - [FAQs](#faqs)
    - [WooCommerce Integration](#woocommerce-integration)
 4. [Error Handling](#error-handling)
 5. [Best Practices](#best-practices)
@@ -1027,6 +1028,109 @@ X-API-Key: ahc_live_sk_your_api_key_here
 
 ---
 
+### FAQs
+
+#### 19. Get FAQs
+
+Retrieve frequently asked questions (FAQs).
+
+**Endpoint:** `GET /api/faqs/public`
+
+**Headers:**
+```http
+X-API-Key: ahc_live_sk_your_api_key_here
+```
+
+**Query Parameters:**
+- `id` (string, optional): Get a single FAQ by ID
+- `page` (number, optional): Page number (default: 1)
+- `limit` (number, optional): Items per page (default: 50, max: 100)
+- `search` (string, optional): Search term (searches question and answer)
+
+**Example Request:**
+```http
+GET /api/faqs/public?page=1&limit=50
+GET /api/faqs/public?id=clx123abc
+GET /api/faqs/public?search=weight
+```
+
+**Response - Single FAQ (200 OK):**
+```json
+{
+  "success": true,
+  "faq": {
+    "id": "clx123abc",
+    "question": "How do I track my weight?",
+    "answer": "You can track your weight by logging it daily through the weight log feature in the app.",
+    "order": 1,
+    "createdAt": "2024-01-10T08:00:00.000Z",
+    "updatedAt": "2024-01-12T14:30:00.000Z"
+  }
+}
+```
+
+**Response - List of FAQs (200 OK):**
+```json
+{
+  "success": true,
+  "faqs": [
+    {
+      "id": "clx123abc",
+      "question": "How do I track my weight?",
+      "answer": "You can track your weight by logging it daily through the weight log feature in the app.",
+      "order": 1,
+      "createdAt": "2024-01-10T08:00:00.000Z",
+      "updatedAt": "2024-01-12T14:30:00.000Z"
+    },
+    {
+      "id": "clx456def",
+      "question": "How do I log my medication?",
+      "answer": "You can log your medication by clicking the 'Log Medicine' button and entering the medicine name, dosage, and time.",
+      "order": 2,
+      "createdAt": "2024-01-11T09:00:00.000Z",
+      "updatedAt": "2024-01-13T15:30:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 50,
+    "total": 10,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false
+  }
+}
+```
+
+**Response Fields:**
+- `faqs` (array): Array of FAQ objects
+  - `id` (string): FAQ unique identifier
+  - `question` (string): The FAQ question
+  - `answer` (string): The FAQ answer
+  - `order` (number): Display order (lower numbers appear first)
+  - `createdAt` (string): ISO 8601 timestamp when FAQ was created
+  - `updatedAt` (string): ISO 8601 timestamp when FAQ was last updated
+- `pagination` (object): Pagination information
+  - `page` (number): Current page number
+  - `limit` (number): Items per page
+  - `total` (number): Total number of FAQs
+  - `totalPages` (number): Total number of pages
+  - `hasNextPage` (boolean): Whether there is a next page
+  - `hasPreviousPage` (boolean): Whether there is a previous page
+
+**Important Notes:**
+- Only active FAQs are returned (isActive = true)
+- FAQs are ordered by the `order` field (ascending), then by creation date
+- Search functionality searches both question and answer fields
+- The `answer` field may contain formatted text that should be displayed appropriately in the app
+
+**Error Responses:**
+- `401 Unauthorized`: Invalid or missing API key
+- `404 Not Found`: FAQ not found or not active (when using `id` parameter)
+- `500 Internal Server Error`: Server error
+
+---
+
 ### WooCommerce Integration
 
 #### 13. Get WooCommerce Orders
@@ -1856,6 +1960,32 @@ class ApiService {
       throw Exception('Failed to fetch medicines');
     }
   }
+
+  // Get FAQs
+  static Future<Map<String, dynamic>> getFAQs({
+    int page = 1,
+    int limit = 50,
+    String? search,
+    String? id,
+  }) async {
+    final queryParams = {
+      'page': page.toString(),
+      'limit': limit.toString(),
+      if (search != null) 'search': search,
+      if (id != null) 'id': id,
+    };
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/faqs/public').replace(queryParameters: queryParams),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to fetch FAQs');
+    }
+  }
 }
 ```
 
@@ -1877,7 +2007,13 @@ For API support, issues, or questions:
 
 ## Changelog
 
-### Version 1.4.0 (Current)
+### Version 1.5.0 (Current)
+- Added FAQ endpoints (GET)
+- Users can now retrieve frequently asked questions
+- FAQs are ordered by display order and support search functionality
+- Only active FAQs are returned to mobile apps
+
+### Version 1.4.0
 - Added medication log endpoints (GET and POST)
 - Users can now log medication intake with dosage and time
 - Medication logs are organized by weeks (last 4 weeks)
@@ -1913,5 +2049,5 @@ For API support, issues, or questions:
 
 **Last Updated:** December 2024
 
-**API Version:** 1.4.0
+**API Version:** 1.5.0
 
