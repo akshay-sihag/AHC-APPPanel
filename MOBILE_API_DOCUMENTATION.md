@@ -9,6 +9,7 @@ This document provides comprehensive documentation for all APIs available for bu
 3. [API Endpoints](#api-endpoints)
    - [User Management](#user-management)
    - [Weight Logs](#weight-logs)
+   - [Medication Logs](#medication-logs)
    - [Blogs](#blogs)
    - [Medicines](#medicines)
    - [Medicine Categories](#medicine-categories)
