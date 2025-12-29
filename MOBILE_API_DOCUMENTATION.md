@@ -14,6 +14,7 @@ This document provides comprehensive documentation for all APIs available for bu
    - [Medicines](#medicines)
    - [Medicine Categories](#medicine-categories)
    - [WooCommerce Integration](#woocommerce-integration)
+   - [FAQs](#faqs)
 4. [Error Handling](#error-handling)
 5. [Best Practices](#best-practices)
 6. [Rate Limiting](#rate-limiting)
@@ -1626,6 +1627,152 @@ private fun createNotificationChannel() {
 
 ---
 
+### FAQs
+
+#### 17. Get FAQs
+
+Retrieve all active frequently asked questions (FAQs) for display in the mobile app.
+
+**Endpoint:** `GET /api/faqs/public`
+
+**Headers:**
+```http
+X-API-Key: ahc_live_sk_your_api_key_here
+```
+
+**Example Request:**
+```http
+GET /api/faqs/public
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "faqs": [
+    {
+      "id": "clx123abc456",
+      "question": "How do I track my weight?",
+      "answer": "You can log your weight by going to the Weight Log section and tapping the 'Add Weight' button. Enter your current weight and the app will automatically calculate the change from your previous entry.",
+      "order": 1,
+      "createdAt": "2024-01-15T10:30:00.000Z"
+    },
+    {
+      "id": "clx789def012",
+      "question": "How do I log my medication?",
+      "answer": "To log medication, navigate to the Medication Log section and tap 'Log Medicine'. Select the medicine name, enter the dosage, and confirm. The app will track your medication intake for the last 4 weeks.",
+      "order": 2,
+      "createdAt": "2024-01-16T14:20:00.000Z"
+    },
+    {
+      "id": "clx345ghi678",
+      "question": "What are daily tasks?",
+      "answer": "Daily tasks are three activities you need to complete each day. The task list resets every day at midnight. You can track your progress in the dashboard, and completed tasks are automatically counted.",
+      "order": 3,
+      "createdAt": "2024-01-17T09:15:00.000Z"
+    }
+  ],
+  "total": 3
+}
+```
+
+**Response Fields:**
+- `success` (boolean): Indicates if the request was successful
+- `faqs` (array): Array of FAQ objects
+  - `id` (string): Unique identifier for the FAQ
+  - `question` (string): The FAQ question
+  - `answer` (string): The detailed answer to the question
+  - `order` (number): Display order for sorting FAQs
+  - `createdAt` (string): ISO 8601 timestamp of when the FAQ was created
+- `total` (number): Total number of active FAQs returned
+
+**Important Notes:**
+- Only active FAQs are returned (inactive FAQs are filtered out)
+- FAQs are sorted by `order` (ascending), then by `createdAt` (descending)
+- The endpoint requires a valid API key
+- FAQs can be managed through the admin dashboard at `/dashboard/faqs`
+
+**Error Responses:**
+- `401 Unauthorized`: Invalid or missing API key
+- `500 Internal Server Error`: Server error
+
+**Example Usage (JavaScript/TypeScript):**
+```typescript
+async function fetchFAQs() {
+  try {
+    const response = await fetch('https://your-domain.com/api/faqs/public', {
+      method: 'GET',
+      headers: {
+        'X-API-Key': 'ahc_live_sk_your_api_key_here',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log(`Fetched ${data.total} FAQs`);
+      data.faqs.forEach((faq) => {
+        console.log(`Q: ${faq.question}`);
+        console.log(`A: ${faq.answer}`);
+      });
+      return data.faqs;
+    }
+  } catch (error) {
+    console.error('Error fetching FAQs:', error);
+    throw error;
+  }
+}
+```
+
+**Example Usage (Kotlin/Android):**
+```kotlin
+suspend fun fetchFAQs(): List<FAQ> {
+    val client = OkHttpClient()
+    val request = Request.Builder()
+        .url("https://your-domain.com/api/faqs/public")
+        .addHeader("X-API-Key", "ahc_live_sk_your_api_key_here")
+        .get()
+        .build()
+
+    val response = client.newCall(request).execute()
+    
+    if (!response.isSuccessful) {
+        throw IOException("Unexpected code ${response.code}")
+    }
+
+    val responseBody = response.body?.string()
+    val json = JSONObject(responseBody ?: "")
+    
+    if (json.getBoolean("success")) {
+        val faqsArray = json.getJSONArray("faqs")
+        val faqs = mutableListOf<FAQ>()
+        
+        for (i in 0 until faqsArray.length()) {
+            val faqJson = faqsArray.getJSONObject(i)
+            faqs.add(
+                FAQ(
+                    id = faqJson.getString("id"),
+                    question = faqJson.getString("question"),
+                    answer = faqJson.getString("answer"),
+                    order = faqJson.getInt("order"),
+                    createdAt = faqJson.getString("createdAt")
+                )
+            )
+        }
+        
+        return faqs
+    } else {
+        throw Exception("Failed to fetch FAQs")
+    }
+}
+```
+
+---
+
 ## Error Handling
 
 All API endpoints follow a consistent error response format:
@@ -1877,7 +2024,13 @@ For API support, issues, or questions:
 
 ## Changelog
 
-### Version 1.4.0 (Current)
+### Version 1.5.0 (Current)
+- Added FAQ endpoints (GET)
+- Mobile apps can now retrieve all active FAQs
+- FAQs are sorted by display order and creation date
+- Only active FAQs are returned to mobile apps
+
+### Version 1.4.0
 - Added medication log endpoints (GET and POST)
 - Users can now log medication intake with dosage and time
 - Medication logs are organized by weeks (last 4 weeks)
