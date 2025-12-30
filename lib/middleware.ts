@@ -9,14 +9,14 @@ import bcrypt from 'bcryptjs';
  * Returns the API key record if valid, null otherwise
  */
 export async function validateApiKey(request: NextRequest): Promise<{ id: string; name: string } | null> {
-  // Try to get API key from X-API-Key header first
-  let apiKey = request.headers.get('X-API-Key');
+  // Try to get API key from X-API-Key header first (try both cases)
+  let apiKey = request.headers.get('X-API-Key') || request.headers.get('x-api-key');
   
   // If not found, try Authorization header with Bearer format
   if (!apiKey) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      apiKey = authHeader.substring(7);
+    const authHeader = request.headers.get('Authorization') || request.headers.get('authorization');
+    if (authHeader && (authHeader.startsWith('Bearer ') || authHeader.startsWith('bearer '))) {
+      apiKey = authHeader.substring(7).trim();
     }
   }
 
