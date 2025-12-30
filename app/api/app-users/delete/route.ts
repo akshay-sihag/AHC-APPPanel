@@ -55,7 +55,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Find user by wpUserId or email
+    // Find user by wpUserId or email (try wpUserId first, then fallback to email)
     let user;
     if (wpUserId) {
       user = await prisma.appUser.findUnique({
@@ -69,7 +69,10 @@ export async function DELETE(request: NextRequest) {
           },
         },
       });
-    } else if (email) {
+    }
+    
+    // If user not found by wpUserId and email is provided, try email
+    if (!user && email) {
       user = await prisma.appUser.findFirst({
         where: { email: email.toLowerCase().trim() },
         include: {
