@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
         date: log.date.toISOString().split('T')[0],
         weight: log.weight,
         previousWeight: log.previousWeight,
-        change: log.change,
+        change: log.change !== null ? Math.round(log.change * 10) / 10 : null,
         changeType: log.changeType,
         createdAt: log.createdAt.toISOString(),
         updatedAt: log.updatedAt.toISOString(),

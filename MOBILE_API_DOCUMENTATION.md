@@ -468,6 +468,54 @@ GET /api/weight-logs/public?userEmail=user@example.com&page=1&limit=100
 
 ---
 
+#### 4a. Delete Weight Log
+
+Delete a specific weight log entry.
+
+**Endpoint:** `DELETE /api/weight-logs/public/[id]`
+
+**Headers:**
+```http
+X-API-Key: ahc_live_sk_your_api_key_here
+```
+
+**Path Parameters:**
+- `id` (string, required): Weight log ID to delete
+
+**Query Parameters:**
+- `userId` (string, optional): WordPress user ID for verification
+- `userEmail` (string, optional): User email for verification
+
+**Note:** At least one of `userId` or `userEmail` should be provided to verify ownership of the weight log.
+
+**Example Request:**
+```http
+DELETE /api/weight-logs/public/clx456def?userEmail=user@example.com
+DELETE /api/weight-logs/public/clx456def?userId=123
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Weight log deleted successfully"
+}
+```
+
+**Important Notes:**
+- The endpoint verifies that the weight log belongs to the specified user before deletion
+- If `userId` or `userEmail` is provided, the system checks ownership
+- If no verification parameters are provided, the deletion will proceed (use with caution)
+- Deletion is permanent and cannot be undone
+
+**Error Responses:**
+- `401 Unauthorized`: Invalid or missing API key
+- `403 Forbidden`: Weight log does not belong to the specified user
+- `404 Not Found`: Weight log not found
+- `500 Internal Server Error`: Server error
+
+---
+
 ### Blogs
 
 #### 5. Get Blogs
@@ -2036,6 +2084,31 @@ class ApiService {
       return json.decode(response.body);
     } else {
       throw Exception('Failed to fetch weight logs');
+    }
+  }
+
+  // Delete Weight Log
+  static Future<Map<String, dynamic>> deleteWeightLog({
+    required String logId,
+    String? userId,
+    String? userEmail,
+  }) async {
+    final queryParams = <String, String>{};
+
+    if (userId != null) {
+      queryParams['userId'] = userId;
+    }
+    if (userEmail != null) {
+      queryParams['userEmail'] = userEmail;
+    }
+
+    final uri = Uri.parse('$baseUrl/weight-logs/public/$logId').replace(queryParameters: queryParams);
+    final response = await http.delete(uri, headers: headers);
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to delete weight log');
     }
   }
 

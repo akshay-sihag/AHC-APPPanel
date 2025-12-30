@@ -93,7 +93,9 @@ export async function POST(request: NextRequest) {
     });
 
     const previousWeight = previousLog?.weight || null;
-    const change = previousWeight !== null ? weightNum - previousWeight : null;
+    const changeRaw = previousWeight !== null ? weightNum - previousWeight : null;
+    // Round change to 1 decimal place to avoid floating point precision issues
+    const change = changeRaw !== null ? Math.round(changeRaw * 10) / 10 : null;
     
     let changeType: string | null = null;
     if (change !== null) {
@@ -157,7 +159,7 @@ export async function POST(request: NextRequest) {
         date: weightLog.date.toISOString().split('T')[0],
         weight: weightLog.weight,
         previousWeight: weightLog.previousWeight,
-        change: weightLog.change,
+        change: weightLog.change !== null ? Math.round(weightLog.change * 10) / 10 : null,
         changeType: weightLog.changeType,
         createdAt: weightLog.createdAt.toISOString(),
       },
@@ -335,7 +337,7 @@ export async function GET(request: NextRequest) {
         date: log.date.toISOString().split('T')[0],
         weight: log.weight,
         previousWeight: log.previousWeight,
-        change: log.change,
+        change: log.change !== null ? Math.round(log.change * 10) / 10 : null,
         changeType: log.changeType,
         createdAt: log.createdAt.toISOString(),
         updatedAt: log.updatedAt.toISOString(),
