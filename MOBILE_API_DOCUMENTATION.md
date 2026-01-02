@@ -11,8 +11,6 @@ This document provides comprehensive documentation for all APIs available for bu
    - [Weight Logs](#weight-logs)
    - [Medication Logs](#medication-logs)
    - [Blogs](#blogs)
-   - [Medicines](#medicines)
-   - [Medicine Categories](#medicine-categories)
    - [WooCommerce Integration](#woocommerce-integration)
    - [FAQs](#faqs)
 4. [Error Handling](#error-handling)
@@ -586,11 +584,11 @@ DELETE /api/weight-logs/public/clx456def?userId=123
 
 ### Blogs
 
-#### 5. Get Blogs
+#### 5. Get Latest Blogs
 
-Retrieve published blog posts.
+Retrieve the latest 2 blog posts from WordPress. This endpoint fetches blogs directly from the WordPress REST API and caches them for optimal performance.
 
-**Endpoint:** `GET /api/blogs/public`
+**Endpoint:** `GET /api/woocommerce/blogs`
 
 **Headers:**
 ```http
@@ -598,270 +596,92 @@ X-API-Key: ahc_live_sk_your_api_key_here
 ```
 
 **Query Parameters:**
-- `id` (string, optional): Get a single blog by ID
-- `page` (number, optional): Page number (default: 1)
-- `limit` (number, optional): Items per page (default: 10, max: 50)
-- `search` (string, optional): Search term (searches title, tagline, description, and tags)
-- `tag` (string, optional): Filter by specific tag
+- `nocache` (string, optional): Set to `'1'` to skip cache and fetch fresh data
 
 **Example Request:**
 ```http
-GET /api/blogs/public?page=1&limit=10
-GET /api/blogs/public?id=clx789ghi
-GET /api/blogs/public?search=health&tag=fitness
+GET /api/woocommerce/blogs
+GET /api/woocommerce/blogs?nocache=1
 ```
 
-**Response - Single Blog (200 OK):**
+**Response (200 OK):**
 ```json
 {
   "success": true,
-  "blog": {
-    "id": "clx789ghi",
-    "title": "10 Tips for Healthy Living",
-    "tagline": "Discover the secrets to a healthier lifestyle",
-    "description": "<p>Rich HTML content here...</p>",
-    "tags": ["health", "fitness", "wellness"],
-    "featuredImage": "https://example.com/image.jpg",
-    "createdAt": "2024-01-10T08:00:00.000Z",
-    "updatedAt": "2024-01-12T14:30:00.000Z"
-  }
-}
-```
-
-**Response - List of Blogs (200 OK):**
-```json
-{
-  "success": true,
+  "count": 2,
   "blogs": [
     {
-      "id": "clx789ghi",
+      "id": "123",
       "title": "10 Tips for Healthy Living",
-      "tagline": "Discover the secrets to a healthier lifestyle",
-      "description": "<p>Rich HTML content here...</p>",
+      "tagline": "Discover the secrets to a healthier lifestyle with these proven tips",
+      "description": "Full blog content text without HTML tags, trimmed to 500 characters...",
       "tags": ["health", "fitness", "wellness"],
-      "featuredImage": "https://example.com/image.jpg",
+      "featuredImage": "https://alternatehealthclub.com/wp-content/uploads/2024/01/image.jpg",
       "createdAt": "2024-01-10T08:00:00.000Z",
-      "updatedAt": "2024-01-12T14:30:00.000Z"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 10,
-    "total": 50,
-    "totalPages": 5,
-    "hasNextPage": true,
-    "hasPreviousPage": false
-  }
-}
-```
-
-**Important Notes:**
-- Only published blogs are returned
-- The `description` field contains HTML content that should be rendered in a WebView or HTML renderer
-- Tags are returned as an array of strings
-
-**Error Responses:**
-- `401 Unauthorized`: Invalid or missing API key
-- `404 Not Found`: Blog not found or not published (when using `id` parameter)
-- `500 Internal Server Error`: Server error
-
----
-
-### Medicines
-
-#### 6. Get Medicines
-
-Retrieve active medicines/products.
-
-**Endpoint:** `GET /api/medicines/public`
-
-**Headers:**
-```http
-X-API-Key: ahc_live_sk_your_api_key_here
-```
-
-**Query Parameters:**
-- `id` (string, optional): Get a single medicine by ID
-- `page` (number, optional): Page number (default: 1)
-- `limit` (number, optional): Items per page (default: 10, max: 50)
-- `search` (string, optional): Search term (searches title, tagline, and description)
-- `categoryId` (number, optional): Filter by category ID
-
-**Example Request:**
-```http
-GET /api/medicines/public?page=1&limit=10
-GET /api/medicines/public?id=clx123abc
-GET /api/medicines/public?categoryId=1&search=vitamin
-```
-
-**Response - Single Medicine (200 OK):**
-```json
-{
-  "success": true,
-  "medicine": {
-    "id": "clx123abc",
-    "categoryId": 1,
-    "category": {
-      "id": 1,
-      "title": "Weight Loss",
-      "tagline": "Accelerate Your Metabolism Naturally",
-      "icon": "/medicine/category-icons/1766203299813_icon.png"
+      "updatedAt": "2024-01-12T14:30:00.000Z",
+      "link": "https://alternatehealthclub.com/blog/10-tips-healthy-living",
+      "slug": "10-tips-healthy-living"
     },
-    "title": "Premium Fat Burner",
-    "tagline": "Advanced weight loss formula",
-    "description": "Detailed product description...",
-    "image": "data:image/png;base64,iVBORw0KGgo...",
-    "url": "https://example.com/product/premium-fat-burner",
-    "price": 29.99,
-    "createdAt": "2024-01-10T08:00:00.000Z",
-    "updatedAt": "2024-01-12T14:30:00.000Z"
-  }
-}
-```
-
-**Response - List of Medicines (200 OK):**
-```json
-{
-  "success": true,
-  "medicines": [
     {
-      "id": "clx123abc",
-      "categoryId": 1,
-      "category": {
-        "id": 1,
-        "title": "Weight Loss",
-        "tagline": "Accelerate Your Metabolism Naturally",
-        "icon": "/medicine/category-icons/1766203299813_icon.png"
-      },
-      "title": "Premium Fat Burner",
-      "tagline": "Advanced weight loss formula",
-      "description": "Detailed product description...",
-      "image": "data:image/png;base64,iVBORw0KGgo...",
-      "url": "https://example.com/product/premium-fat-burner",
-      "price": 29.99,
-      "createdAt": "2024-01-10T08:00:00.000Z",
-      "updatedAt": "2024-01-12T14:30:00.000Z"
+      "id": "122",
+      "title": "Nutrition Guide for Beginners",
+      "tagline": "Start your nutrition journey with this comprehensive guide",
+      "description": "Learn the basics of nutrition and how to make healthy food choices...",
+      "tags": ["nutrition", "health", "beginner"],
+      "featuredImage": "https://alternatehealthclub.com/wp-content/uploads/2024/01/nutrition.jpg",
+      "createdAt": "2024-01-08T10:00:00.000Z",
+      "updatedAt": "2024-01-09T15:20:00.000Z",
+      "link": "https://alternatehealthclub.com/blog/nutrition-guide-beginners",
+      "slug": "nutrition-guide-beginners"
     }
   ],
-  "pagination": {
-    "page": 1,
-    "limit": 10,
-    "total": 25,
-    "totalPages": 3,
-    "hasNextPage": true,
-    "hasPreviousPage": false
-  }
+  "fromCache": true,
+  "stale": false,
+  "refreshing": false,
+  "responseTime": "45ms"
 }
 ```
 
 **Response Fields:**
-- `id` (string): Unique medicine identifier
-- `categoryId` (number): ID of the medicine category
-- `category` (object): Category information including `id`, `title`, `tagline`, and `icon`
-- `title` (string): Medicine/product title
-- `tagline` (string, nullable): Short tagline or subtitle
-- `description` (string, nullable): Detailed product description
-- `image` (string, nullable): Base64-encoded image data URL
-- `url` (string, nullable): Product URL or external link
-- `price` (number, nullable): Price in USD. Can be `null` if not set
-- `createdAt` (string): ISO 8601 timestamp of creation
-- `updatedAt` (string): ISO 8601 timestamp of last update
+- `success` (boolean): Indicates if the request was successful
+- `count` (number): Number of blogs returned (always 2)
+- `blogs` (array): Array of blog objects
+  - `id` (string): WordPress post ID
+  - `title` (string): Blog post title
+  - `tagline` (string): Excerpt/tagline (first 200 characters, HTML stripped)
+  - `description` (string): Blog content preview (first 500 characters, HTML stripped)
+  - `tags` (array): Array of tag names as strings
+  - `featuredImage` (string): Full URL to the featured image (or empty string if none)
+  - `createdAt` (string): ISO 8601 timestamp of post creation
+  - `updatedAt` (string): ISO 8601 timestamp of last modification
+  - `link` (string): Full URL to the blog post on WordPress
+  - `slug` (string): URL-friendly slug for the blog post
+- `fromCache` (boolean): Indicates if response was served from cache
+- `stale` (boolean): Indicates if cached data was stale (expiring soon)
+- `refreshing` (boolean): Indicates if background refresh is in progress
+- `responseTime` (string): Server processing time in milliseconds
 
 **Important Notes:**
-- Only active medicines are returned
-- Images are stored as Base64 data URLs
-- Each medicine includes its category information with icon
-- Category icons are returned as relative paths (e.g., `/medicine/category-icons/filename.png`) and should be resolved to full URLs on the client side
-- Price is optional and may be `null` if not set. When present, it represents the price in USD (e.g., `29.99` for $29.99)
+- Always returns the latest 2 published blog posts ordered by date (newest first)
+- Blogs are fetched from WordPress REST API: `https://alternatehealthclub.com/wp-json/wp/v2/posts`
+- Data is cached in Redis for 30 minutes with stale-while-revalidate pattern
+- If cache is stale (expiring within 30 seconds), stale data is served immediately while fresh data is fetched in the background
+- HTML tags are automatically stripped from `tagline` and `description` fields
+- Featured images are absolute URLs from WordPress
+- Use the `link` field to navigate to the full blog post on WordPress
+
+**Performance:**
+- Cache hits: <50ms response time
+- Cache misses: ~2000ms (first request, then cached)
+- Stale cache: <50ms (served immediately, refreshed in background)
 
 **Error Responses:**
 - `401 Unauthorized`: Invalid or missing API key
-- `404 Not Found`: Medicine not found or not active (when using `id` parameter)
-- `500 Internal Server Error`: Server error
+- `500 Internal Server Error`: Server error or WordPress API unavailable
+- `504 Gateway Timeout`: WordPress API took too long to respond (>8 seconds)
 
 ---
 
-### Medicine Categories
-
-#### 7. Get Medicine Categories
-
-Retrieve medicine categories.
-
-**Endpoint:** `GET /api/medicine-categories/public`
-
-**Headers:**
-```http
-X-API-Key: ahc_live_sk_your_api_key_here
-```
-
-**Query Parameters:**
-- `id` (number, optional): Get a single category by ID
-- `page` (number, optional): Page number (default: 1)
-- `limit` (number, optional): Items per page (default: 50, max: 100)
-- `search` (string, optional): Search term (searches title and tagline)
-
-**Example Request:**
-```http
-GET /api/medicine-categories/public?page=1&limit=50
-GET /api/medicine-categories/public?id=1
-GET /api/medicine-categories/public?search=weight
-```
-
-**Response - Single Category (200 OK):**
-```json
-{
-  "success": true,
-  "category": {
-    "id": 1,
-    "title": "Weight Loss",
-    "tagline": "Accelerate Your Metabolism Naturally",
-    "icon": "/medicine/category-icons/1766203299813_icon.png",
-    "medicineCount": 15,
-    "createdAt": "2024-01-10T08:00:00.000Z",
-    "updatedAt": "2024-01-12T14:30:00.000Z"
-  }
-}
-```
-
-**Response - List of Categories (200 OK):**
-```json
-{
-  "success": true,
-  "categories": [
-    {
-      "id": 1,
-      "title": "Weight Loss",
-      "tagline": "Accelerate Your Metabolism Naturally",
-      "icon": "/medicine/category-icons/1766203299813_icon.png",
-      "medicineCount": 15,
-      "createdAt": "2024-01-10T08:00:00.000Z",
-      "updatedAt": "2024-01-12T14:30:00.000Z"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 50,
-    "total": 10,
-    "totalPages": 1,
-    "hasNextPage": false,
-    "hasPreviousPage": false
-  }
-}
-```
-
-**Important Notes:**
-- Category IDs are numeric and start from 1
-- Each category includes the count of medicines in that category
-- Category icons are returned as relative paths (e.g., `/medicine/category-icons/filename.png`) and should be resolved to full URLs on the client side
-- The `icon` field may be `null` if no icon has been uploaded for the category
-
-**Error Responses:**
-- `400 Bad Request`: Invalid category ID format
-- `401 Unauthorized`: Invalid or missing API key
-- `404 Not Found`: Category not found (when using `id` parameter)
-- `500 Internal Server Error`: Server error
-
----
 
 ### Push Notifications
 
@@ -2073,7 +1893,7 @@ All API endpoints follow a consistent error response format:
 ```dart
 try {
   final response = await http.get(
-    Uri.parse('$baseUrl/api/blogs/public'),
+    Uri.parse('$baseUrl/api/woocommerce/blogs'),
     headers: {
       'X-API-Key': apiKey,
     },
@@ -2082,6 +1902,9 @@ try {
   if (response.statusCode == 200) {
     final data = json.decode(response.body);
     // Process successful response
+    final blogs = data['blogs'] as List;
+    final fromCache = data['fromCache'] ?? false;
+    // Use blogs data...
   } else if (response.statusCode == 401) {
     // Handle unauthorized - invalid API key
     throw Exception('Invalid API key. Please contact support.');
@@ -2301,22 +2124,18 @@ class ApiService {
     }
   }
 
-  // Get Blogs
+  // Get Latest Blogs (from WordPress)
+  // Always returns the latest 2 blog posts from WordPress
   static Future<Map<String, dynamic>> getBlogs({
-    int page = 1,
-    int limit = 10,
-    String? search,
-    String? tag,
+    bool noCache = false,
   }) async {
-    final queryParams = {
-      'page': page.toString(),
-      'limit': limit.toString(),
-      if (search != null) 'search': search,
-      if (tag != null) 'tag': tag,
-    };
+    final queryParams = <String, String>{};
+    if (noCache) {
+      queryParams['nocache'] = '1';
+    }
 
     final response = await http.get(
-      Uri.parse('$baseUrl/blogs/public').replace(queryParameters: queryParams),
+      Uri.parse('$baseUrl/api/woocommerce/blogs').replace(queryParameters: queryParams),
       headers: headers,
     );
 
@@ -2324,32 +2143,6 @@ class ApiService {
       return json.decode(response.body);
     } else {
       throw Exception('Failed to fetch blogs');
-    }
-  }
-
-  // Get Medicines
-  static Future<Map<String, dynamic>> getMedicines({
-    int page = 1,
-    int limit = 10,
-    int? categoryId,
-    String? search,
-  }) async {
-    final queryParams = {
-      'page': page.toString(),
-      'limit': limit.toString(),
-      if (categoryId != null) 'categoryId': categoryId.toString(),
-      if (search != null) 'search': search,
-    };
-
-    final response = await http.get(
-      Uri.parse('$baseUrl/medicines/public').replace(queryParameters: queryParams),
-      headers: headers,
-    );
-
-    if (response.statusCode == 200) {
-      return json.decode(response.body);
-    } else {
-      throw Exception('Failed to fetch medicines');
     }
   }
 }
