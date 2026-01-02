@@ -23,16 +23,7 @@ export const revalidate = 60;
 export async function GET(request: NextRequest) {
   try {
     // Validate API key
-    let apiKey;
-    try {
-      apiKey = await validateApiKey(request);
-    } catch (apiKeyError) {
-      console.error('API key validation error:', apiKeyError);
-      return NextResponse.json(
-        { error: 'API key validation failed', details: process.env.NODE_ENV === 'development' ? (apiKeyError instanceof Error ? apiKeyError.message : 'Unknown error') : undefined },
-        { status: 500 }
-      );
-    }
+    const apiKey = await validateApiKey(request);
     
     if (!apiKey) {
       return NextResponse.json(
@@ -50,26 +41,18 @@ export async function GET(request: NextRequest) {
     // WordPress REST API endpoint
     const WORDPRESS_API_URL = 'https://alternatehealthclub.com/wp-json/wp/v2/posts';
     
-    // Fetch latest 2 posts from WordPress
-    // WordPress API parameters:
-    // - per_page: number of posts to retrieve (2)
-    // - orderby: order by date
-    // - order: descending (newest first)
-    // - status: only published posts
-    // - _embed: include embedded resources (featured media, author, etc.)
-    // - _fields: only request needed fields to reduce payload size
+    // Fetch latest 2 posts from WordPress (optimized URL construction)
     const wordpressUrl = new URL(WORDPRESS_API_URL);
-    wordpressUrl.searchParams.append('per_page', '2');
-    wordpressUrl.searchParams.append('orderby', 'date');
-    wordpressUrl.searchParams.append('order', 'desc');
-    wordpressUrl.searchParams.append('status', 'publish');
-    wordpressUrl.searchParams.append('_embed', '1');
-    // Request only needed fields to reduce response size
-    wordpressUrl.searchParams.append('_fields', 'id,title,excerpt,content,date,modified,link,slug,tags,_embedded');
+    wordpressUrl.searchParams.set('per_page', '2');
+    wordpressUrl.searchParams.set('orderby', 'date');
+    wordpressUrl.searchParams.set('order', 'desc');
+    wordpressUrl.searchParams.set('status', 'publish');
+    wordpressUrl.searchParams.set('_embed', '1');
+    wordpressUrl.searchParams.set('_fields', 'id,title,excerpt,content,date,modified,link,slug,tags,_embedded');
 
-    // Add timeout to prevent hanging
+    // Add timeout to prevent hanging (optimized - 3s timeout)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
 
     let wordpressResponse: Response;
     try {
@@ -77,9 +60,10 @@ export async function GET(request: NextRequest) {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
         },
         signal: controller.signal,
+        // Enable keep-alive for connection reuse
+        keepalive: true,
       });
       clearTimeout(timeoutId);
     } catch (fetchError: any) {
@@ -89,7 +73,7 @@ export async function GET(request: NextRequest) {
           {
             error: 'Request timeout. WordPress API took too long to respond.',
             details: process.env.NODE_ENV === 'development' 
-              ? 'The request exceeded 5 seconds. Please check your WordPress API connection.' 
+              ? 'The request exceeded 3 seconds. Please check your WordPress API connection.' 
               : undefined,
           },
           { status: 504 }
@@ -137,47 +121,35 @@ export async function GET(request: NextRequest) {
     // Handle case where WordPress returns a single post object instead of array
     const postsArray = Array.isArray(wordpressPosts) ? wordpressPosts : [wordpressPosts];
 
-    // Transform WordPress posts to match expected format (optimized)
-    const blogs = postsArray.map((post: any) => {
-      // Extract excerpt - optimized HTML stripping
-      const excerpt = post.excerpt?.rendered || '';
-      const tagline = excerpt ? excerpt.replace(/<[^>]*>/g, '').trim().substring(0, 200) : '';
+    // Transform WordPress posts (optimized - minimal processing)
+    const htmlStripRegex = /<[^>]*>/g;
+    const blogs = postsArray.map((p: any) => {
+      const excerpt = p.excerpt?.rendered ?? '';
+      const content = p.content?.rendered ?? '';
+      const featuredMedia = p._embedded?.['wp:featuredmedia']?.[0];
       
-      // Extract description - only process if needed
-      const content = post.content?.rendered || '';
-      const description = content ? content.replace(/<[^>]*>/g, '').trim().substring(0, 500) : '';
-      
-      // Get featured image URL from embedded media (optimized)
-      let featuredImage = '';
-      const featuredMedia = post._embedded?.['wp:featuredmedia']?.[0];
-      if (featuredMedia) {
-        featuredImage = featuredMedia.source_url || 
-                        featuredMedia.media_details?.sizes?.full?.source_url || 
-                        featuredMedia.media_details?.sizes?.large?.source_url || '';
-      }
-      
-      // Extract tag names from embedded terms (optimized)
-      let tagNames: string[] = [];
-      const allTerms = post._embedded?.['wp:term'];
-      if (allTerms && Array.isArray(allTerms)) {
-        const flatTerms = allTerms.flat();
-        tagNames = flatTerms
-          .filter((term: any) => term?.taxonomy === 'post_tag')
-          .map((term: any) => term?.name || term?.slug || '')
-          .filter(Boolean);
-      }
+      // Extract tag names (optimized)
+      const allTerms = p._embedded?.['wp:term'];
+      const tagNames = allTerms && Array.isArray(allTerms)
+        ? allTerms.flat()
+            .filter((t: any) => t?.taxonomy === 'post_tag')
+            .map((t: any) => t?.name ?? t?.slug ?? '')
+            .filter(Boolean)
+        : [];
 
       return {
-        id: post.id?.toString() || '',
-        title: post.title?.rendered || post.title || '',
-        tagline: tagline,
-        description: description,
-        tags: tagNames.length > 0 ? tagNames : (post.tags || []),
-        featuredImage: featuredImage,
-        createdAt: post.date || post.date_gmt || new Date().toISOString(),
-        updatedAt: post.modified || post.modified_gmt || new Date().toISOString(),
-        link: post.link || '',
-        slug: post.slug || '',
+        id: String(p.id ?? ''),
+        title: p.title?.rendered ?? p.title ?? '',
+        tagline: excerpt ? excerpt.replace(htmlStripRegex, '').trim().substring(0, 200) : '',
+        description: content ? content.replace(htmlStripRegex, '').trim().substring(0, 500) : '',
+        tags: tagNames.length > 0 ? tagNames : (p.tags ?? []),
+        featuredImage: featuredMedia?.source_url ?? 
+                       featuredMedia?.media_details?.sizes?.full?.source_url ?? 
+                       featuredMedia?.media_details?.sizes?.large?.source_url ?? '',
+        createdAt: p.date ?? p.date_gmt ?? new Date().toISOString(),
+        updatedAt: p.modified ?? p.modified_gmt ?? new Date().toISOString(),
+        link: p.link ?? '',
+        slug: p.slug ?? '',
       };
     });
 

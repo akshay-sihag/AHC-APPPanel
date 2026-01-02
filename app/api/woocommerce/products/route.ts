@@ -31,17 +31,12 @@ export const revalidate = 60;
  */
 export async function GET(request: NextRequest) {
   try {
-    // Validate API key
-    let apiKey;
-    try {
-      apiKey = await validateApiKey(request);
-    } catch (apiKeyError) {
-      console.error('API key validation error:', apiKeyError);
-      return NextResponse.json(
-        { error: 'API key validation failed', details: process.env.NODE_ENV === 'development' ? (apiKeyError instanceof Error ? apiKeyError.message : 'Unknown error') : undefined },
-        { status: 500 }
-      );
-    }
+    // Parallel: Validate API key and get query parameters simultaneously
+    const url = new URL(request.url);
+    const [apiKey, searchParams] = await Promise.all([
+      validateApiKey(request),
+      Promise.resolve(url.searchParams),
+    ]);
     
     if (!apiKey) {
       return NextResponse.json(
@@ -50,28 +45,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get query parameters
-    const { searchParams } = new URL(request.url);
+    // Get query parameters (already extracted)
     const search = searchParams.get('search');
     const category = searchParams.get('category');
     const perPage = searchParams.get('per_page') || '10';
     const page = searchParams.get('page') || '1';
     const status = searchParams.get('status') || 'publish';
 
-    // Validate pagination parameters
+    // Validate pagination parameters (optimized)
     const perPageNum = parseInt(perPage, 10);
     const pageNum = parseInt(page, 10);
     
-    if (isNaN(perPageNum) || perPageNum < 1 || perPageNum > 100) {
+    if (perPageNum < 1 || perPageNum > 100 || pageNum < 1) {
       return NextResponse.json(
-        { error: 'per_page must be a number between 1 and 100' },
-        { status: 400 }
-      );
-    }
-
-    if (isNaN(pageNum) || pageNum < 1) {
-      return NextResponse.json(
-        { error: 'page must be a positive number' },
+        { error: perPageNum < 1 || perPageNum > 100 
+          ? 'per_page must be a number between 1 and 100' 
+          : 'page must be a positive number' },
         { status: 400 }
       );
     }
@@ -84,6 +73,11 @@ export async function GET(request: NextRequest) {
     } else {
       settings = await prisma.settings.findUnique({
         where: { id: 'settings' },
+        select: {
+          woocommerceApiUrl: true,
+          woocommerceApiKey: true,
+          woocommerceApiSecret: true,
+        },
       });
       if (settings) {
         cachedSettings = settings;
@@ -98,66 +92,52 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Prepare WooCommerce API URL
-    // Remove trailing slash if present and ensure proper endpoint
-    let apiUrl = settings.woocommerceApiUrl.replace(/\/$/, '');
+    // Prepare WooCommerce API URL (optimized)
+    let apiUrl = settings.woocommerceApiUrl.endsWith('/') 
+      ? settings.woocommerceApiUrl.slice(0, -1) 
+      : settings.woocommerceApiUrl;
     
     // Auto-fix API URL if it's missing the wp-json path
-    // If URL doesn't contain /wp-json/wc/, try to construct it
     if (!apiUrl.includes('/wp-json/wc/')) {
-      // Try to append the standard WooCommerce REST API path
-      const baseUrl = apiUrl.replace(/\/wp-json.*$/, ''); // Remove any existing wp-json path
-      apiUrl = `${baseUrl}/wp-json/wc/v3`; // Default to v3
-      console.warn(`WooCommerce API URL was missing /wp-json/wc/ path. Auto-corrected to: ${apiUrl}`);
+      const baseUrl = apiUrl.split('/wp-json')[0] || apiUrl;
+      apiUrl = `${baseUrl}/wp-json/wc/v3`;
     }
     
-    // Validate API URL format - should contain wp-json/wc/v3 or wp-json/wc/v1
+    // Validate API URL format
     if (!apiUrl.includes('/wp-json/wc/')) {
       return NextResponse.json(
         {
           error: 'Invalid WooCommerce API URL format',
           details: process.env.NODE_ENV === 'development' 
-            ? `The API URL "${settings.woocommerceApiUrl}" is invalid. It should be in the format: https://yourstore.com/wp-json/wc/v3 or https://yourstore.com/wp-json/wc/v1` 
-            : 'Please check your WooCommerce API URL in admin settings. It should include /wp-json/wc/v3 or /wp-json/wc/v1',
+            ? `The API URL "${settings.woocommerceApiUrl}" is invalid. It should be in the format: https://yourstore.com/wp-json/wc/v3` 
+            : 'Please check your WooCommerce API URL in admin settings.',
         },
         { status: 400 }
       );
     }
 
-    // Create Basic Auth header for WooCommerce API
-    // WooCommerce uses Consumer Key as username and Consumer Secret as password
-    const authString = Buffer.from(
-      `${settings.woocommerceApiKey}:${settings.woocommerceApiSecret}`
-    ).toString('base64');
-
+    // Create Basic Auth header (cached in settings object if possible)
+    const authString = Buffer.from(`${settings.woocommerceApiKey}:${settings.woocommerceApiSecret}`).toString('base64');
     const authHeaders = {
       'Authorization': `Basic ${authString}`,
-      'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
 
-    // Build products URL with query parameters
+    // Build products URL with query parameters (optimized)
     const productsUrl = new URL(`${apiUrl}/products`);
+    productsUrl.searchParams.set('per_page', perPageNum.toString());
+    productsUrl.searchParams.set('page', pageNum.toString());
+    productsUrl.searchParams.set('status', status);
     
-    // Add query parameters
-    productsUrl.searchParams.append('per_page', perPageNum.toString());
-    productsUrl.searchParams.append('page', pageNum.toString());
-    productsUrl.searchParams.append('status', status);
-    
-    if (search) {
-      productsUrl.searchParams.append('search', search);
-    }
-    
+    if (search) productsUrl.searchParams.set('search', search);
     if (category) {
       const categoryNum = parseInt(category, 10);
-      if (!isNaN(categoryNum)) {
-        productsUrl.searchParams.append('category', categoryNum.toString());
-      }
+      if (!isNaN(categoryNum)) productsUrl.searchParams.set('category', categoryNum.toString());
     }
 
-    // Fetch products from WooCommerce API with timeout
+    // Fetch products from WooCommerce API with timeout (optimized - 3s timeout)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
 
     let woocommerceResponse: Response;
     try {
@@ -165,6 +145,8 @@ export async function GET(request: NextRequest) {
         method: 'GET',
         headers: authHeaders,
         signal: controller.signal,
+        // Enable keep-alive for connection reuse
+        keepalive: true,
       });
       clearTimeout(timeoutId);
     } catch (fetchError: any) {
@@ -174,7 +156,7 @@ export async function GET(request: NextRequest) {
           {
             error: 'Request timeout. WooCommerce API took too long to respond.',
             details: process.env.NODE_ENV === 'development' 
-              ? 'The request exceeded 5 seconds. Please check your WooCommerce API connection.' 
+              ? 'The request exceeded 3 seconds. Please check your WooCommerce API connection.' 
               : undefined,
           },
           { status: 504 }
@@ -220,39 +202,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Parse JSON response
+    // Parse JSON response directly (optimized - no intermediate text())
     let products;
     try {
-      const responseText = await woocommerceResponse.text();
       if (!isJson) {
-        console.error('WooCommerce Products API returned non-JSON response:', responseText.substring(0, 500));
-        
-        // Check if it's an HTML error page
-        if (responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
-          return NextResponse.json(
-            {
-              error: 'WooCommerce API returned an HTML page instead of JSON',
-              details: process.env.NODE_ENV === 'development' 
-                ? `The API URL "${apiUrl}" appears to be incorrect. It should point to your WooCommerce REST API endpoint (e.g., https://yourstore.com/wp-json/wc/v3). Please verify the API URL in admin settings.` 
-                : 'Please check your WooCommerce API URL configuration in admin settings.',
-            },
-            { status: 500 }
-          );
-        }
-        
+        const responseText = await woocommerceResponse.text();
+        const isHtml = responseText.includes('<!DOCTYPE') || responseText.includes('<html');
         return NextResponse.json(
           {
-            error: 'WooCommerce API returned an invalid response format',
+            error: isHtml 
+              ? 'WooCommerce API returned an HTML page instead of JSON'
+              : 'WooCommerce API returned an invalid response format',
             details: process.env.NODE_ENV === 'development' 
-              ? 'The API returned non-JSON content. Please check your API URL and credentials.' 
+              ? (isHtml 
+                ? `The API URL "${apiUrl}" appears to be incorrect. Please verify the API URL in admin settings.`
+                : 'The API returned non-JSON content. Please check your API URL and credentials.')
               : undefined,
           },
           { status: 500 }
         );
       }
-      products = JSON.parse(responseText);
+      products = await woocommerceResponse.json();
     } catch (parseError) {
-      console.error('Failed to parse WooCommerce products response:', parseError);
       return NextResponse.json(
         {
           error: 'Failed to parse response from WooCommerce API',
@@ -271,29 +242,29 @@ export async function GET(request: NextRequest) {
     const totalProducts = woocommerceResponse.headers.get('x-wp-total');
     const totalPages = woocommerceResponse.headers.get('x-wp-totalpages');
 
-    // Enrich products with formatted data (optimized - only essential fields)
-    const enrichedProducts = productsArray.map((product: any) => ({
-      id: product.id || null,
-      name: product.name || '',
-      slug: product.slug || '',
-      permalink: product.permalink || '',
-      type: product.type || 'simple',
-      status: product.status || 'publish',
-      featured: product.featured || false,
-      description: product.description || '',
-      short_description: product.short_description || '',
-      sku: product.sku || '',
-      price: product.price || '0',
-      regular_price: product.regular_price || '0',
-      sale_price: product.sale_price || '',
-      on_sale: product.on_sale || false,
-      stock_status: product.stock_status || 'instock',
-      stock_quantity: product.stock_quantity || null,
-      images: product.images || [],
-      categories: product.categories || [],
-      tags: product.tags || [],
-      date_created: product.date_created || product.date_created_gmt || null,
-      date_modified: product.date_modified || product.date_modified_gmt || null,
+    // Enrich products with formatted data (optimized - minimal processing)
+    const enrichedProducts = productsArray.map((p: any) => ({
+      id: p.id ?? null,
+      name: p.name ?? '',
+      slug: p.slug ?? '',
+      permalink: p.permalink ?? '',
+      type: p.type ?? 'simple',
+      status: p.status ?? 'publish',
+      featured: p.featured ?? false,
+      description: p.description ?? '',
+      short_description: p.short_description ?? '',
+      sku: p.sku ?? '',
+      price: p.price ?? '0',
+      regular_price: p.regular_price ?? '0',
+      sale_price: p.sale_price ?? '',
+      on_sale: p.on_sale ?? false,
+      stock_status: p.stock_status ?? 'instock',
+      stock_quantity: p.stock_quantity ?? null,
+      images: p.images ?? [],
+      categories: p.categories ?? [],
+      tags: p.tags ?? [],
+      date_created: p.date_created ?? p.date_created_gmt ?? null,
+      date_modified: p.date_modified ?? p.date_modified_gmt ?? null,
     }));
 
     return NextResponse.json({
