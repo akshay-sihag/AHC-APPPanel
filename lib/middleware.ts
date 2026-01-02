@@ -2,24 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from './auth';
 import { prisma } from './prisma';
 import bcrypt from 'bcryptjs';
+import { getCache, setCache, CACHE_TTL, CACHE_KEYS } from './redis';
 
-// Cache API keys for 2 minutes to reduce database queries
-let cachedApiKeys: Array<{ id: string; key: string; name: string }> | null = null;
-let apiKeysCacheTime = 0;
-const API_KEYS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+// Local fallback cache for API keys (in case Redis is slow/unavailable)
+let localApiKeysCache: Array<{ id: string; key: string; name: string }> | null = null;
+let localApiKeysCacheTime = 0;
+const LOCAL_CACHE_TTL = 30 * 1000; // 30 seconds local fallback
 
 /**
  * Validates API key from request headers
  * Supports both 'X-API-Key' header and 'Authorization: Bearer <key>' format
  * Returns the API key record if valid, null otherwise
- * Optimized with caching and async lastUsed updates
+ * 
+ * Optimized with Redis caching:
+ * - API key hashes cached in Redis for 2 minutes
+ * - Local memory fallback for 30 seconds
+ * - Parallel bcrypt comparisons
+ * - Async lastUsed updates
  */
 export async function validateApiKey(request: NextRequest): Promise<{ id: string; name: string } | null> {
-  // Try to get API key from X-API-Key header first (optimized - single case check)
+  // Extract API key from headers
   const apiKeyHeader = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
   let apiKey = apiKeyHeader;
   
-  // If not found, try Authorization header with Bearer format
+  // Try Authorization header with Bearer format
   if (!apiKey) {
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
     if (authHeader) {
@@ -35,13 +41,22 @@ export async function validateApiKey(request: NextRequest): Promise<{ id: string
   }
 
   try {
-    // Get cached API keys or fetch from database
-    const now = Date.now();
     let activeKeys: Array<{ id: string; key: string; name: string }>;
+    const now = Date.now();
+
+    // Try Redis cache first
+    const redisCacheKey = CACHE_KEYS.API_KEYS;
+    const cachedKeys = await getCache<Array<{ id: string; key: string; name: string }>>(redisCacheKey);
     
-    if (cachedApiKeys && (now - apiKeysCacheTime) < API_KEYS_CACHE_TTL) {
-      activeKeys = cachedApiKeys;
-    } else {
+    if (cachedKeys && cachedKeys.length > 0) {
+      activeKeys = cachedKeys;
+    } 
+    // Try local cache as fallback
+    else if (localApiKeysCache && (now - localApiKeysCacheTime) < LOCAL_CACHE_TTL) {
+      activeKeys = localApiKeysCache;
+    } 
+    // Fetch from database
+    else {
       const keys = await prisma.apiKey.findMany({
         where: { isActive: true },
         select: { id: true, key: true, name: true },
@@ -52,11 +67,18 @@ export async function validateApiKey(request: NextRequest): Promise<{ id: string
       }
       
       activeKeys = keys;
-      cachedApiKeys = activeKeys;
-      apiKeysCacheTime = now;
+      
+      // Store in local cache immediately
+      localApiKeysCache = activeKeys;
+      localApiKeysCacheTime = now;
+      
+      // Store in Redis cache asynchronously
+      setCache(redisCacheKey, activeKeys, CACHE_TTL.API_KEYS).catch(() => {
+        // Silently fail - we have local cache
+      });
     }
 
-    // Try to match the provided key with stored hashed keys (parallel comparison)
+    // Parallel bcrypt comparisons for speed
     const comparisons = activeKeys.map(async (keyRecord) => {
       try {
         const isMatch = await bcrypt.compare(apiKey!, keyRecord.key);
@@ -66,18 +88,16 @@ export async function validateApiKey(request: NextRequest): Promise<{ id: string
       }
     });
 
-    // Wait for all comparisons and find the first match
+    // Wait for all and find match
     const results = await Promise.all(comparisons);
     const matchedKey = results.find(result => result !== null);
 
     if (matchedKey) {
-      // Update lastUsed timestamp asynchronously (fire and forget - don't wait)
+      // Update lastUsed asynchronously (fire and forget)
       prisma.apiKey.update({
         where: { id: matchedKey.id },
         data: { lastUsed: new Date() },
-      }).catch(() => {
-        // Silently fail - not critical
-      });
+      }).catch(() => {});
       
       return {
         id: matchedKey.id,

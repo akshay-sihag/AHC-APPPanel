@@ -1,26 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateApiKey } from '@/lib/middleware';
-
-// Cache blogs for 5 minutes to reduce WordPress API calls
-let cachedBlogs: any = null;
-let blogsCacheTime = 0;
-const BLOGS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+import { getCache, setCache, buildBlogsCacheKey, CACHE_TTL } from '@/lib/redis';
 
 // Enable Next.js caching for this route (60 seconds)
 export const revalidate = 60;
 
 /**
- * WooCommerce Blogs API Endpoint
+ * WooCommerce Blogs API Endpoint - Redis Cached
+ * 
+ * Flow: Client → Redis Cache → (miss) → WordPress API → Redis → Client
  * 
  * GET: Retrieves the latest 2 blog posts from WordPress REST API.
  * 
+ * Query Parameters:
+ * - nocache: Skip cache if set to '1' (optional)
+ * 
  * Security:
  * - Requires valid API key in request headers
- * - API key can be sent as 'X-API-Key' header or 'Authorization: Bearer <key>'
- * - Fetches from WordPress REST API: https://alternatehealthclub.com/wp-json/wp/v2/posts
- * - Always returns the 2 most recent blogs ordered by date
+ * 
+ * Performance:
+ * - Redis cache TTL: 30 minutes
+ * - Response includes 'fromCache' indicator
  */
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     // Validate API key
     const apiKey = await validateApiKey(request);
@@ -32,16 +36,30 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check cache first
-    const now = Date.now();
-    if (cachedBlogs && (now - blogsCacheTime) < BLOGS_CACHE_TTL) {
-      return NextResponse.json(cachedBlogs);
+    // Check for nocache parameter
+    const url = new URL(request.url);
+    const noCache = url.searchParams.get('nocache') === '1';
+
+    // Build cache key
+    const cacheKey = buildBlogsCacheKey();
+
+    // Check Redis cache first (unless nocache is set)
+    if (!noCache) {
+      const cachedData = await getCache<any>(cacheKey);
+      if (cachedData) {
+        const responseTime = Date.now() - startTime;
+        return NextResponse.json({
+          ...cachedData,
+          fromCache: true,
+          responseTime: `${responseTime}ms`,
+        });
+      }
     }
 
     // WordPress REST API endpoint
     const WORDPRESS_API_URL = 'https://alternatehealthclub.com/wp-json/wp/v2/posts';
     
-    // Fetch latest 2 posts from WordPress (optimized URL construction)
+    // Build URL with optimized parameters
     const wordpressUrl = new URL(WORDPRESS_API_URL);
     wordpressUrl.searchParams.set('per_page', '2');
     wordpressUrl.searchParams.set('orderby', 'date');
@@ -50,9 +68,9 @@ export async function GET(request: NextRequest) {
     wordpressUrl.searchParams.set('_embed', '1');
     wordpressUrl.searchParams.set('_fields', 'id,title,excerpt,content,date,modified,link,slug,tags,_embedded');
 
-    // Add timeout to prevent hanging (optimized - 3s timeout)
+    // Fetch from WordPress with timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
 
     let wordpressResponse: Response;
     try {
@@ -62,8 +80,6 @@ export async function GET(request: NextRequest) {
           'Accept': 'application/json',
         },
         signal: controller.signal,
-        // Enable keep-alive for connection reuse
-        keepalive: true,
       });
       clearTimeout(timeoutId);
     } catch (fetchError: any) {
@@ -73,7 +89,7 @@ export async function GET(request: NextRequest) {
           {
             error: 'Request timeout. WordPress API took too long to respond.',
             details: process.env.NODE_ENV === 'development' 
-              ? 'The request exceeded 3 seconds. Please check your WordPress API connection.' 
+              ? 'The request exceeded 8 seconds.' 
               : undefined,
           },
           { status: 504 }
@@ -86,7 +102,6 @@ export async function GET(request: NextRequest) {
       const errorText = await wordpressResponse.text();
       console.error('WordPress API error:', {
         status: wordpressResponse.status,
-        statusText: wordpressResponse.statusText,
         error: errorText.substring(0, 500),
       });
 
@@ -94,7 +109,7 @@ export async function GET(request: NextRequest) {
         {
           error: 'Failed to fetch blogs from WordPress',
           details: process.env.NODE_ENV === 'development' 
-            ? `WordPress API returned ${wordpressResponse.status}: ${wordpressResponse.statusText}` 
+            ? `WordPress API returned ${wordpressResponse.status}` 
             : undefined,
         },
         { status: wordpressResponse.status || 500 }
@@ -106,29 +121,22 @@ export async function GET(request: NextRequest) {
     try {
       wordpressPosts = await wordpressResponse.json();
     } catch (parseError) {
-      console.error('Failed to parse WordPress response:', parseError);
       return NextResponse.json(
-        {
-          error: 'Failed to parse response from WordPress API',
-          details: process.env.NODE_ENV === 'development' && parseError instanceof Error
-            ? parseError.message
-            : undefined,
-        },
+        { error: 'Failed to parse response from WordPress API' },
         { status: 500 }
       );
     }
 
-    // Handle case where WordPress returns a single post object instead of array
+    // Transform WordPress posts
     const postsArray = Array.isArray(wordpressPosts) ? wordpressPosts : [wordpressPosts];
-
-    // Transform WordPress posts (optimized - minimal processing)
     const htmlStripRegex = /<[^>]*>/g;
+    
     const blogs = postsArray.map((p: any) => {
       const excerpt = p.excerpt?.rendered ?? '';
       const content = p.content?.rendered ?? '';
       const featuredMedia = p._embedded?.['wp:featuredmedia']?.[0];
       
-      // Extract tag names (optimized)
+      // Extract tag names
       const allTerms = p._embedded?.['wp:term'];
       const tagNames = allTerms && Array.isArray(allTerms)
         ? allTerms.flat()
@@ -153,23 +161,32 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const response = {
+    // Prepare response data
+    const responseData = {
       success: true,
       count: blogs.length,
       blogs: blogs,
     };
 
-    // Cache the response
-    cachedBlogs = response;
-    blogsCacheTime = now;
+    // Store in Redis cache (async - don't wait)
+    setCache(cacheKey, responseData, CACHE_TTL.BLOGS).catch((err) => {
+      console.error('Redis cache set error:', err);
+    });
 
-    return NextResponse.json(response);
+    const responseTime = Date.now() - startTime;
+    return NextResponse.json({
+      ...responseData,
+      fromCache: false,
+      responseTime: `${responseTime}ms`,
+    });
   } catch (error) {
-    console.error('Get WooCommerce blogs error:', error);
+    console.error('Get WordPress blogs error:', error);
     return NextResponse.json(
       { 
         error: 'An error occurred while fetching blogs from WordPress',
-        details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : 'Unknown error') : undefined
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error') 
+          : undefined
       },
       { status: 500 }
     );
