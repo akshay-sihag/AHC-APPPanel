@@ -1,22 +1,18 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 
 export default function LogoutPage() {
-  const router = useRouter();
-
   useEffect(() => {
-    // Sign out without redirect, then manually navigate
+    // Sign out without redirect, then manually navigate using window.location
     signOut({ 
       redirect: false 
     }).then(() => {
-      // Manually redirect to login page
-      router.push('/login');
-      router.refresh();
+      // Use window.location to ensure correct origin (works in both dev and production)
+      window.location.href = '/login';
     });
-  }, [router]);
+  }, []);
 
   return (
     <div className="flex h-screen items-center justify-center bg-gray-50">
