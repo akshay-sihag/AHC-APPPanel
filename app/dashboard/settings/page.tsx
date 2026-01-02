@@ -27,6 +27,13 @@ export default function SettingsPage() {
   const [showSecretToken, setShowSecretToken] = useState<{ [key: string]: boolean }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showPasswordFields, setShowPasswordFields] = useState(false);
 
   const handleCreateApiKey = async () => {
     if (!newApiKeyName.trim()) {
@@ -286,6 +293,60 @@ export default function SettingsPage() {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate passwords
+    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      alert('Please fill in all password fields');
+      return;
+    }
+
+    if (passwordData.newPassword.length < 8) {
+      alert('New password must be at least 8 characters long');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('New password and confirm password do not match');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    
+    try {
+      const response = await fetch('/api/user/change-password', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
+      });
+
+      if (response.ok) {
+        alert('Password changed successfully!');
+        // Reset password fields
+        setPasswordData({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        });
+        setShowPasswordFields(false);
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to change password');
+      }
+    } catch (error) {
+      console.error('Error changing password:', error);
+      alert('An error occurred while changing password');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -419,6 +480,87 @@ export default function SettingsPage() {
               />
               <p className="text-xs text-[#7895b3] mt-1">Update your account email address</p>
             </div>
+
+            {/* Password Change Section */}
+            <div className="pt-6 border-t border-[#dfedfb]">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h5 className="text-base font-semibold text-[#435970]">Change Password</h5>
+                  <p className="text-xs text-[#7895b3] mt-1">Update your account password</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordFields(!showPasswordFields);
+                    if (showPasswordFields) {
+                      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                    }
+                  }}
+                  className="px-4 py-2 text-sm text-[#435970] border border-[#dfedfb] rounded-lg hover:bg-[#dfedfb] transition-colors"
+                >
+                  {showPasswordFields ? 'Cancel' : 'Change Password'}
+                </button>
+              </div>
+
+              {showPasswordFields && (
+                <form onSubmit={handlePasswordChange} className="space-y-4">
+                  <div>
+                    <label htmlFor="currentPassword" className="block text-sm font-medium text-[#435970] mb-2">
+                      Current Password
+                    </label>
+                    <input
+                      type="password"
+                      id="currentPassword"
+                      value={passwordData.currentPassword}
+                      onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+                      className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
+                      placeholder="Enter current password"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="newPassword" className="block text-sm font-medium text-[#435970] mb-2">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      id="newPassword"
+                      value={passwordData.newPassword}
+                      onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+                      className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
+                      placeholder="Enter new password (min. 8 characters)"
+                      minLength={8}
+                      required
+                    />
+                    <p className="text-xs text-[#7895b3] mt-1">Password must be at least 8 characters long</p>
+                  </div>
+                  <div>
+                    <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#435970] mb-2">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      id="confirmPassword"
+                      value={passwordData.confirmPassword}
+                      onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                      className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
+                      placeholder="Confirm new password"
+                      required
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={isChangingPassword}
+                      className="px-6 py-2 bg-[#435970] text-white rounded-lg font-medium hover:bg-[#7895b3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isChangingPassword ? 'Changing...' : 'Change Password'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
             <div>
               <label htmlFor="timezone" className="block text-sm font-medium text-[#435970] mb-2">
                 Timezone

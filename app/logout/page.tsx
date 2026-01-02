@@ -8,10 +8,13 @@ export default function LogoutPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Sign out and redirect to login
+    // Sign out without redirect, then manually navigate
     signOut({ 
-      callbackUrl: '/login',
-      redirect: true 
+      redirect: false 
+    }).then(() => {
+      // Manually redirect to login page
+      router.push('/login');
+      router.refresh();
     });
   }, [router]);
 
