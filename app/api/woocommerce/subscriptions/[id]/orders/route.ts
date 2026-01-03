@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateApiKey } from '@/lib/middleware';
-import { getCacheWithStale, setCache, buildSubscriptionOrdersCacheKey, CACHE_TTL, refreshCacheInBackground } from '@/lib/redis';
 
 // Cache settings for 5 minutes to reduce database queries
 let cachedSettings: any = null;
@@ -51,7 +50,6 @@ export async function GET(
     // Get query parameters
     const url = new URL(request.url);
     const email = url.searchParams.get('email');
-    const noCache = url.searchParams.get('nocache') === '1';
 
     // Validate email parameter
     if (!email) {
@@ -74,47 +72,6 @@ export async function GET(
 
     // Normalize email
     const normalizedEmail = email.toLowerCase().trim();
-
-    // Build cache key
-    const cacheKey = buildSubscriptionOrdersCacheKey(subscriptionIdNum, normalizedEmail);
-
-    // Check Redis cache with stale detection (unless nocache is set)
-    if (!noCache) {
-      const cacheResult = await getCacheWithStale<any>(cacheKey, 30); // 30 seconds stale threshold
-      
-      if (cacheResult.data) {
-        const responseTime = Date.now() - startTime;
-        
-        // If data is stale, trigger background refresh and return stale data immediately
-        if (cacheResult.isStale) {
-          // Trigger background refresh (non-blocking)
-          refreshCacheInBackground(
-            cacheKey,
-            async () => {
-              return await fetchSubscriptionOrders(subscriptionIdNum, normalizedEmail);
-            },
-            CACHE_TTL.ORDERS
-          ).catch(() => {}); // Ignore errors
-
-          return NextResponse.json({
-            ...cacheResult.data,
-            fromCache: true,
-            stale: true,
-            refreshing: true,
-            responseTime: `${responseTime}ms`,
-          });
-        }
-
-        // Fresh cache hit - return immediately
-        return NextResponse.json({
-          ...cacheResult.data,
-          fromCache: true,
-          stale: false,
-          refreshing: false,
-          responseTime: `${responseTime}ms`,
-        });
-      }
-    }
 
     // Helper function to get WooCommerce settings
     async function getWooCommerceSettings() {
@@ -428,7 +385,7 @@ export async function GET(
       );
     }
 
-    // Cache miss - fetch fresh data from WooCommerce
+    // Fetch fresh data from WooCommerce
     let responseData;
     try {
       responseData = await fetchSubscriptionOrders(subscriptionIdNum, normalizedEmail);
@@ -472,17 +429,9 @@ export async function GET(
       );
     }
 
-    // Store in Redis cache (async - don't wait)
-    setCache(cacheKey, responseData, CACHE_TTL.ORDERS).catch((err) => {
-      console.error('Redis cache set error:', err);
-    });
-
     const responseTime = Date.now() - startTime;
     return NextResponse.json({
       ...responseData,
-      fromCache: false,
-      stale: false,
-      refreshing: false,
       responseTime: `${responseTime}ms`,
     });
   } catch (error) {
