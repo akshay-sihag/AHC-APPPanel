@@ -9,11 +9,7 @@ import { Redis } from '@upstash/redis';
  * - Edge-optimized for low latency
  * 
  * Cache TTL Strategy:
- * - Orders: 3 minutes (orders change frequently)
- * - Subscriptions: 5 minutes (subscriptions change less frequently)
- * - Billing Address: 10 minutes (billing address changes infrequently)
- * - Settings: 10 minutes (rarely changes)
- * - API Keys: 2 minutes (security balance)
+ * - All cache entries: 5 seconds
  */
 
 // Initialize Redis client with Upstash URL
@@ -24,11 +20,11 @@ const redis = new Redis({
 
 // Cache TTL constants (in seconds)
 export const CACHE_TTL = {
-  SETTINGS: 10 * 60,       // 10 minutes
-  API_KEYS: 2 * 60,        // 2 minutes
-  ORDERS: 3 * 60,          // 3 minutes (orders change frequently)
-  SUBSCRIPTIONS: 5 * 60,   // 5 minutes (subscriptions change less frequently)
-  BILLING_ADDRESS: 10 * 60, // 10 minutes (billing address changes infrequently)
+  SETTINGS: 5,       // 5 seconds
+  API_KEYS: 5,        // 5 seconds
+  ORDERS: 5,          // 5 seconds
+  SUBSCRIPTIONS: 5,   // 5 seconds
+  BILLING_ADDRESS: 5, // 5 seconds
 } as const;
 
 // Cache key prefixes
