@@ -109,17 +109,12 @@ export async function GET(request: NextRequest) {
 
       // Skip customer lookup - we'll filter by email directly (faster)
       // Customer lookup adds unnecessary delay and we filter by email anyway
-      let customerId: number | null = null;
 
       // Fetch subscriptions
       let subscriptionsUrl: URL;
       let woocommerceResponse: Response;
 
       subscriptionsUrl = new URL(`${apiUrl}/subscriptions`);
-      
-      if (customerId) {
-        subscriptionsUrl.searchParams.append('customer', customerId.toString());
-      }
       subscriptionsUrl.searchParams.append('per_page', '100');
 
       woocommerceResponse = await fetch(subscriptionsUrl.toString(), {
@@ -131,9 +126,6 @@ export async function GET(request: NextRequest) {
       if (!woocommerceResponse.ok && woocommerceResponse.status === 404) {
         const apiUrlV1 = apiUrl.replace('/wc/v3', '/wc/v1');
         subscriptionsUrl = new URL(`${apiUrlV1}/subscriptions`);
-        if (customerId) {
-          subscriptionsUrl.searchParams.append('customer', customerId.toString());
-        }
         subscriptionsUrl.searchParams.append('per_page', '100');
 
         woocommerceResponse = await fetch(subscriptionsUrl.toString(), {
@@ -160,8 +152,8 @@ export async function GET(request: NextRequest) {
       const subscriptions = await woocommerceResponse.json();
       let subscriptionsArray = Array.isArray(subscriptions) ? subscriptions : [subscriptions];
 
-      // Filter by email if we don't have customerId
-      if (!customerId && subscriptionsArray.length > 0) {
+      // Filter by email (we skip customer lookup and filter directly)
+      if (subscriptionsArray.length > 0) {
         subscriptionsArray = subscriptionsArray.filter((sub: any) => {
           const subEmail = (
             sub.billing?.email?.toLowerCase().trim() ||
@@ -173,36 +165,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // If we have customerId but no subscriptions, try fetching without customer filter
-      if (customerId && subscriptionsArray.length === 0) {
-        const allSubscriptionsUrl = new URL(`${apiUrl}/subscriptions`);
-        allSubscriptionsUrl.searchParams.append('per_page', '100');
-        
-        const allSubscriptionsResponse = await fetch(allSubscriptionsUrl.toString(), {
-          method: 'GET',
-          headers: authHeaders,
-        });
-
-        if (allSubscriptionsResponse.ok) {
-          const contentType = allSubscriptionsResponse.headers.get('content-type');
-          const isJson = contentType && contentType.includes('application/json');
-          
-          if (isJson) {
-            const allSubscriptions = await allSubscriptionsResponse.json();
-            const allSubscriptionsArray = Array.isArray(allSubscriptions) ? allSubscriptions : [allSubscriptions];
-            
-            subscriptionsArray = allSubscriptionsArray.filter((sub: any) => {
-              const subEmail = (
-                sub.billing?.email?.toLowerCase().trim() ||
-                sub.customer_email?.toLowerCase().trim() ||
-                sub.email?.toLowerCase().trim() ||
-                ''
-              );
-              return subEmail === email;
-            });
-          }
-        }
-      }
+      // Note: We skip the customerId fallback since we filter by email directly
 
       // Enrich subscriptions with all status information
       const enrichedSubscriptions = subscriptionsArray.map((sub: any) => ({
@@ -218,7 +181,7 @@ export async function GET(request: NextRequest) {
       return {
         success: true,
         email: email,
-        customerId: customerId || null,
+        customerId: null,
         count: enrichedSubscriptions.length,
         subscriptions: enrichedSubscriptions,
       };
