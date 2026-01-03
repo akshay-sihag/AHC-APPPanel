@@ -18,8 +18,8 @@ import { Redis } from '@upstash/redis';
 
 // Initialize Redis client with Upstash URL
 const redis = new Redis({
-  url: 'https://endless-platypus-10721.upstash.io',
-  token: 'ASnhAAIncDIyNDAxYmU3YTRkODY0MzU4OTRiOTFiZjQwNTIyZGY1YXAyMTA3MjE',
+  url: 'https://patient-teal-15659.upstash.io',
+  token: 'AT0rAAIncDI1MDQyODdjZTQ5Y2M0YzFhOWRiODcyNDBmOWI5OGU5MHAyMTU2NTk',
 });
 
 // Cache TTL constants (in seconds)
