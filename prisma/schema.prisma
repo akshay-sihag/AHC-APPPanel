@@ -153,6 +153,7 @@ model AppUser {
   // Relations
   weightLogs     WeightLog[]
   medicationLogs MedicationLog[]
+  changeLogs     UserChangeLog[]
   
   // Timestamps
   createdAt      DateTime @default(now())
@@ -297,4 +298,82 @@ model FAQ {
   @@index([isActive])
   @@index([order])
   @@map("faqs")
+}
+
+model UserChangeLog {
+  id          String   @id @default(cuid())
+  appUserId   String   // Foreign key to AppUser
+  field       String   // Field name that changed (e.g., "weight", "goal", "status")
+  oldValue    String?  // Previous value (as string)
+  newValue    String?  // New value (as string)
+  changeType  String   // Type of change: "update", "create", "delete"
+  changedBy   String?  // Who made the change (API key name, admin email, etc.)
+  ipAddress   String?  // IP address of the requester
+  metadata    Json?    // Additional metadata about the change
+  
+  // Relations
+  appUser     AppUser  @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  @@index([appUserId])
+  @@index([field])
+  @@index([createdAt])
+  @@map("user_change_logs")
+}
+
+model Webhook {
+  id          String   @id @default(cuid())
+  name        String   // Human-readable name for the webhook
+  url         String   // Webhook endpoint URL
+  secret      String?  // Secret for signing webhook payloads
+  events      String[] // Array of event types to listen for (e.g., ["user.created", "user.updated", "weight.logged"])
+  isActive    Boolean  @default(true)
+  description String?  // Optional description
+  
+  // Delivery tracking
+  lastTriggeredAt DateTime?  // Last time this webhook was triggered
+  successCount    Int         @default(0) // Number of successful deliveries
+  failureCount    Int         @default(0) // Number of failed deliveries
+  lastError       String?     // Last error message if any
+  
+  // Headers for webhook requests
+  headers     Json?    // Custom headers to send with webhook (e.g., {"Authorization": "Bearer ..."})
+  
+  // Relations
+  deliveries  WebhookDelivery[]
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([isActive])
+  @@index([url])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id          String   @id @default(cuid())
+  webhookId   String   // Foreign key to Webhook
+  event       String   // Event type that triggered this delivery
+  payload     Json     // Payload that was sent
+  status      String   // "pending", "success", "failed"
+  statusCode  Int?     // HTTP status code from webhook endpoint
+  response    String?  // Response body from webhook endpoint
+  error       String?  // Error message if delivery failed
+  attempts    Int      @default(1) // Number of delivery attempts
+  nextRetryAt DateTime? // When to retry if failed
+  
+  // Relations
+  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([webhookId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("webhook_deliveries")
 }
