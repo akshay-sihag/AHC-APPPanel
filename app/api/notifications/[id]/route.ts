@@ -57,6 +57,20 @@ export async function PUT(
     }
 
     const resolvedParams = await Promise.resolve(params);
+    
+    // Get the current notification to check if status is changing
+    const currentNotification = await prisma.notification.findUnique({
+      where: { id: resolvedParams.id },
+      select: { isActive: true },
+    });
+
+    if (!currentNotification) {
+      return NextResponse.json(
+        { error: 'Notification not found' },
+        { status: 404 }
+      );
+    }
+
     const body = await request.json();
     const { title, description, image, url, isActive } = body;
 
@@ -78,10 +92,15 @@ export async function PUT(
       },
     });
 
-    // Resend push notification if active
+    // Only send push notification if status changed from inactive to active
+    // This prevents duplicate notifications when just updating content
+    const wasInactive = !currentNotification.isActive;
+    const isNowActive = notification.isActive;
+    const statusChangedToActive = wasInactive && isNowActive;
+
     let pushResult = null;
     let pushError = null;
-    if (notification.isActive) {
+    if (statusChangedToActive) {
       try {
         // Check if image is already a full URL (e.g., from Cloudinary) or a relative path
         const imageUrl = notification.image 
