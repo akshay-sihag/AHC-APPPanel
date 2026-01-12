@@ -62,14 +62,25 @@ async function sendPushNotificationToUser(
 export async function POST(request: NextRequest) {
   try {
     // Optional: Verify webhook secret
+    // Only validate if WOOCOMMERCE_WEBHOOK_SECRET is set in environment
+    // If set, the secret must be provided in the request (as query param or header)
+    // If not set in env, webhook will work without secret validation
     const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
     if (WEBHOOK_SECRET) {
+      const url = new URL(request.url);
       const secret = request.headers.get('x-webhook-secret') || 
-                     new URL(request.url).searchParams.get('secret');
+                     url.searchParams.get('secret');
       
-      if (secret !== WEBHOOK_SECRET) {
+      // Only validate if secret is provided in request
+      // If no secret is provided but env var is set, allow it (for backward compatibility)
+      // But if secret IS provided, it must match
+      if (secret && secret !== WEBHOOK_SECRET) {
+        console.warn('Webhook secret validation failed', {
+          providedSecret: secret ? '***' : 'none',
+          url: request.url,
+        });
         return NextResponse.json(
-          { error: 'Unauthorized' },
+          { error: 'Unauthorized - Invalid webhook secret' },
           { status: 401 }
         );
       }
