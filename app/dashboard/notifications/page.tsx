@@ -120,6 +120,7 @@ export default function NotificationsPage() {
       title: '',
       description: '',
       image: '',
+      url: '',
       isActive: true,
     });
     setImageFile(null);
