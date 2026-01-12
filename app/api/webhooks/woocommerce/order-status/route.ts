@@ -1,6 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { sendPushNotificationToUser } from '@/lib/fcm-service';
+import { sendPushNotification } from '@/lib/fcm-service';
+
+// Helper function to send notification to a specific user
+async function sendPushNotificationToUser(
+  emailOrWpUserId: string,
+  title: string,
+  body: string,
+  imageUrl?: string,
+  data?: Record<string, string>
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const user = await prisma.appUser.findFirst({
+      where: {
+        OR: [
+          { email: emailOrWpUserId },
+          { wpUserId: emailOrWpUserId },
+        ],
+        fcmToken: {
+          not: null,
+        },
+        status: 'Active',
+      },
+      select: {
+        fcmToken: true,
+      },
+    });
+
+    if (!user || !user.fcmToken) {
+      return {
+        success: false,
+        error: 'User not found or no FCM token registered',
+      };
+    }
+
+    return await sendPushNotification(
+      user.fcmToken,
+      title,
+      body,
+      imageUrl,
+      data
+    );
+  } catch (error: any) {
+    console.error('Error sending push notification to user:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to send push notification',
+    };
+  }
+}
 
 /**
  * WordPress/WooCommerce Webhook for Order Status Updates
