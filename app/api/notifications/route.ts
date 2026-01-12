@@ -106,12 +106,16 @@ export async function POST(request: NextRequest) {
         successCount: pushResult.successCount,
         failureCount: pushResult.failureCount,
         totalUsers: pushResult.totalUsers,
-        error: pushError,
+        errors: pushResult.errors || [],
+        error: pushError || (pushResult.failureCount > 0 && pushResult.errors?.length > 0 
+          ? pushResult.errors[0] 
+          : undefined),
       } : pushError ? {
         sent: false,
         successCount: 0,
         failureCount: 0,
         totalUsers: 0,
+        errors: [],
         error: pushError,
       } : null,
     }, { status: 201 });

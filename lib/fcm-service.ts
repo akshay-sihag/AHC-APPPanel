@@ -219,13 +219,25 @@ export async function sendPushNotificationToMultiple(
           return { success: true, token };
         } catch (error: any) {
           totalFailure++;
+          // Create detailed error message with error code
+          const errorCode = error.code || 'unknown';
           const errorMsg = error.message || 'Unknown error';
-          allErrors.push(errorMsg);
+          const detailedError = errorCode !== 'unknown' 
+            ? `${errorCode}: ${errorMsg}`
+            : errorMsg;
+          allErrors.push(detailedError);
+          
+          console.error(`FCM send failed for token ${token.substring(0, 20)}...:`, {
+            code: errorCode,
+            message: errorMsg,
+            error: error,
+          });
 
           // Track invalid tokens
           if (error.code === 'messaging/invalid-registration-token' ||
               error.code === 'messaging/registration-token-not-registered') {
             invalidTokens.push(token);
+            console.warn(`Invalid FCM token detected and will be removed: ${token.substring(0, 20)}...`);
           }
           return { success: false, token };
         }
@@ -246,6 +258,15 @@ export async function sendPushNotificationToMultiple(
           fcmToken: null,
         },
       });
+      console.log(`Removed ${invalidTokens.length} invalid FCM token(s) from database`);
+    }
+
+    // Log summary
+    if (totalFailure > 0) {
+      console.warn(`FCM send summary: ${totalSuccess} succeeded, ${totalFailure} failed`);
+      console.warn('Errors:', allErrors);
+    } else if (totalSuccess > 0) {
+      console.log(`FCM send summary: ${totalSuccess} succeeded`);
     }
 
     return {
@@ -258,7 +279,7 @@ export async function sendPushNotificationToMultiple(
     return {
       successCount: 0,
       failureCount: fcmTokens.length,
-      errors: [error.message || 'Failed to send push notifications'],
+      errors: [error.message || error.code || 'Failed to send push notifications'],
     };
   }
 }
@@ -271,7 +292,7 @@ export async function sendPushNotificationToAll(
   body: string,
   imageUrl?: string,
   data?: Record<string, string>
-): Promise<{ successCount: number; failureCount: number; totalUsers: number; error?: string }> {
+): Promise<{ successCount: number; failureCount: number; totalUsers: number; error?: string; errors?: string[] }> {
   try {
     // Get all active users with FCM tokens
     const users = await prisma.appUser.findMany({
@@ -307,6 +328,10 @@ export async function sendPushNotificationToAll(
       successCount: result.successCount,
       failureCount: result.failureCount,
       totalUsers: fcmTokens.length,
+      errors: result.errors,
+      error: result.failureCount > 0 && result.errors.length > 0 
+        ? result.errors[0] 
+        : undefined,
     };
   } catch (error: any) {
     console.error('Error sending push notification to all users:', error);
@@ -315,6 +340,7 @@ export async function sendPushNotificationToAll(
       failureCount: 0,
       totalUsers: 0,
       error: error.message || 'Failed to send push notifications',
+      errors: [error.message || error.code || 'Failed to send push notifications'],
     };
   }
 }

@@ -63,6 +63,9 @@ export async function POST(
       });
     }
 
+    // Get errors from the result (it comes from sendPushNotificationToMultiple)
+    const errors = (pushResult as any).errors || [];
+
     return NextResponse.json({
       success: pushResult.successCount > 0 || pushResult.totalUsers === 0,
       message: pushResult.error 
@@ -77,7 +80,8 @@ export async function POST(
         successCount: pushResult.successCount,
         failureCount: pushResult.failureCount,
         totalUsers: pushResult.totalUsers,
-        error: pushResult.error,
+        errors: errors,
+        error: pushResult.error || (errors.length > 0 ? errors[0] : undefined),
       },
     });
   } catch (error) {

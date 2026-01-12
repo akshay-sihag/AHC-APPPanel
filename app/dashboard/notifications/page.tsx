@@ -236,16 +236,25 @@ export default function NotificationsPage() {
       if (responseData.pushNotification) {
         const push = responseData.pushNotification;
         if (push.error) {
-          notificationMessage += `\n\nPush notification failed: ${push.error}`;
+          notificationMessage += `\n\n⚠️ Push notification failed: ${push.error}`;
+          if (push.errors && push.errors.length > 0) {
+            notificationMessage += `\n\nError details: ${push.errors.join(', ')}`;
+          }
         } else if (push.totalUsers === 0) {
           notificationMessage += '\n\n⚠️ No active users with FCM tokens found';
         } else if (push.sent) {
           notificationMessage += `\n\n✅ Push notification sent to ${push.successCount} user(s)`;
           if (push.failureCount > 0) {
             notificationMessage += ` (${push.failureCount} failed)`;
+            if (push.errors && push.errors.length > 0) {
+              notificationMessage += `\n\nFailed: ${push.errors.join(', ')}`;
+            }
           }
         } else {
           notificationMessage += `\n\n⚠️ Push notification failed to send (${push.failureCount} failures)`;
+          if (push.errors && push.errors.length > 0) {
+            notificationMessage += `\n\nError details: ${push.errors.join(', ')}`;
+          }
         }
       }
 
