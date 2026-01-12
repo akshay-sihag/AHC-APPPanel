@@ -63,45 +63,85 @@ export async function POST(request: NextRequest) {
   try {
     // Optional: Verify webhook secret
     // Only validate if WOOCOMMERCE_WEBHOOK_SECRET is set in environment
-    // If set, the secret must be provided in the request (as query param or header)
-    // If not set in env, webhook will work without secret validation
     const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
     if (WEBHOOK_SECRET) {
-      const url = new URL(request.url);
-      const secret = request.headers.get('x-webhook-secret') || 
-                     url.searchParams.get('secret');
-      
-      // Only validate if secret is provided in request
-      // If no secret is provided but env var is set, allow it (for backward compatibility)
-      // But if secret IS provided, it must match
-      if (secret && secret !== WEBHOOK_SECRET) {
-        console.warn('Webhook secret validation failed', {
-          providedSecret: secret ? '***' : 'none',
-          url: request.url,
-        });
+      try {
+        const url = new URL(request.url);
+        const secret = request.headers.get('x-wc-webhook-signature') || 
+                       request.headers.get('x-webhook-secret') ||
+                       url.searchParams.get('secret');
+        
+        // Only validate if secret is provided in request
+        if (secret && secret !== WEBHOOK_SECRET) {
+          console.warn('Webhook secret validation failed', {
+            providedSecret: secret ? '***' : 'none',
+            url: request.url,
+          });
+          return NextResponse.json(
+            { error: 'Unauthorized - Invalid webhook secret' },
+            { status: 401 }
+          );
+        }
+      } catch (urlError) {
+        console.error('Error parsing request URL:', urlError);
         return NextResponse.json(
-          { error: 'Unauthorized - Invalid webhook secret' },
-          { status: 401 }
+          { error: 'Invalid request URL' },
+          { status: 400 }
         );
       }
     }
 
-    const body = await request.json();
+    // Parse request body with error handling
+    let body;
+    try {
+      const bodyText = await request.text();
+      if (!bodyText || bodyText.trim() === '') {
+        return NextResponse.json(
+          { error: 'Request body is empty' },
+          { status: 400 }
+        );
+      }
+      body = JSON.parse(bodyText);
+    } catch (parseError) {
+      console.error('Error parsing webhook body:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
     
     // Extract order data from WooCommerce webhook
     const orderId = body.id;
     const orderStatus = body.status;
-    const customerEmail = body.billing?.email || body.customer_email;
+    const customerEmail = body.billing?.email || body.customer_email || body.email;
     const customerId = body.customer_id;
     const orderTotal = body.total;
-    const orderNumber = body.number || orderId;
+    const orderNumber = body.number || body.order_number || orderId;
     
     // Validate required fields
-    if (!orderId || !orderStatus || !customerEmail) {
+    if (!orderId) {
       return NextResponse.json(
-        { error: 'Missing required fields: id, status, or customer email' },
+        { error: 'Missing required field: id', received: Object.keys(body) },
         { status: 400 }
       );
+    }
+    
+    if (!orderStatus) {
+      return NextResponse.json(
+        { error: 'Missing required field: status', received: Object.keys(body) },
+        { status: 400 }
+      );
+    }
+    
+    if (!customerEmail) {
+      console.warn('Order webhook missing customer email', { orderId, bodyKeys: Object.keys(body) });
+      // Don't fail the webhook if email is missing, just log it
+      return NextResponse.json({
+        success: false,
+        message: 'Order received but customer email not found',
+        orderId,
+        orderStatus,
+      });
     }
 
     // Map WooCommerce order statuses to user-friendly messages
@@ -142,55 +182,87 @@ export async function POST(request: NextRequest) {
     };
 
     // Create notification in database
-    const notification = await prisma.notification.create({
-      data: {
-        title: statusInfo.title,
-        description: statusInfo.message,
-        isActive: true,
-        url: `/orders/${orderId}`, // Navigate to order details in app
-      },
-    });
+    let notification;
+    try {
+      notification = await prisma.notification.create({
+        data: {
+          title: statusInfo.title,
+          description: statusInfo.message,
+          isActive: true,
+          url: `/orders/${orderId}`, // Navigate to order details in app
+        },
+      });
+    } catch (dbError: any) {
+      console.error('Error creating notification in database:', dbError);
+      return NextResponse.json(
+        { 
+          error: 'Failed to create notification',
+          details: process.env.NODE_ENV === 'development' && dbError instanceof Error 
+            ? dbError.message 
+            : undefined
+        },
+        { status: 500 }
+      );
+    }
 
     // Send push notification to user
-    const pushResult = await sendPushNotificationToUser(
-      customerEmail,
-      statusInfo.title,
-      statusInfo.message,
-      undefined, // No image for order notifications
-      {
-        notificationId: notification.id,
-        type: 'order_status',
-        orderId: String(orderId),
-        orderStatus: orderStatus,
-        url: `/orders/${orderId}`,
-      }
-    );
+    let pushResult;
+    try {
+      pushResult = await sendPushNotificationToUser(
+        customerEmail,
+        statusInfo.title,
+        statusInfo.message,
+        undefined, // No image for order notifications
+        {
+          notificationId: notification.id,
+          type: 'order_status',
+          orderId: String(orderId),
+          orderStatus: orderStatus,
+          url: `/orders/${orderId}`,
+        }
+      );
 
-    // Update receiver count
-    if (pushResult.success) {
-      await prisma.notification.update({
-        where: { id: notification.id },
-        data: { receiverCount: 1 },
-      });
+      // Update receiver count
+      if (pushResult.success) {
+        try {
+          await prisma.notification.update({
+            where: { id: notification.id },
+            data: { receiverCount: 1 },
+          });
+        } catch (updateError) {
+          console.error('Error updating notification receiver count:', updateError);
+          // Don't fail the webhook if this update fails
+        }
+      }
+    } catch (pushError: any) {
+      console.error('Error sending push notification:', pushError);
+      pushResult = {
+        success: false,
+        error: pushError.message || 'Failed to send push notification',
+      };
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Order status notification sent',
+      message: 'Order status notification processed',
       notificationId: notification.id,
       pushNotification: {
-        sent: pushResult.success,
-        error: pushResult.error,
+        sent: pushResult?.success || false,
+        error: pushResult?.error,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Webhook error:', error);
+    console.error('Error stack:', error?.stack);
     return NextResponse.json(
       { 
         error: 'Failed to process webhook',
         details: process.env.NODE_ENV === 'development' && error instanceof Error 
           ? error.message 
-          : undefined
+          : undefined,
+        stack: process.env.NODE_ENV === 'development' && error instanceof Error
+          ? error.stack
+          : undefined,
       },
       { status: 500 }
     );
