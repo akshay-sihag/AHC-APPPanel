@@ -63,3 +63,5 @@ next-env.d.ts
 scripts/*.js
 scripts/*.ps1
 scripts/*.sh
+
+#tmpclaude
