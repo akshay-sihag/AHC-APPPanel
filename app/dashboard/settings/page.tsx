@@ -419,11 +419,102 @@ export default function SettingsPage() {
     }
   };
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const entitiesParam = selectedEntities.join(',');
+      const response = await fetch(`/api/backup/export?entities=${entitiesParam}`);
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        alert('Backup exported successfully!');
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to export backup');
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('An error occurred while exporting backup');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      alert('Please select a backup file to import');
+      return;
+    }
+
+    if (confirm(`Are you sure you want to import backup data? This will ${importMode === 'replace' ? 'replace all existing data' : importMode === 'merge' ? 'merge with existing data' : 'skip existing records'}.`)) {
+      setIsImporting(true);
+      setImportResult(null);
+      
+      try {
+        const fileContent = await importFile.text();
+        const backupData = JSON.parse(fileContent);
+        
+        const response = await fetch('/api/backup/import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            entities: backupData.entities,
+            options: {
+              mode: importMode,
+              importEntities: selectedEntities,
+            },
+          }),
+        });
+
+        const result = await response.json();
+        setImportResult(result);
+        
+        if (result.success) {
+          alert('Backup imported successfully!');
+          // Optionally refresh the page or show a success message
+        } else {
+          alert('Import completed with some errors. Check the results below.');
+        }
+      } catch (error: any) {
+        console.error('Import error:', error);
+        alert(`Failed to import backup: ${error.message || 'Invalid backup file'}`);
+      } finally {
+        setIsImporting(false);
+      }
+    }
+  };
+
+  const toggleEntity = (entity: string) => {
+    setSelectedEntities(prev => 
+      prev.includes(entity) 
+        ? prev.filter(e => e !== entity)
+        : [...prev, entity]
+    );
+  };
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMode, setImportMode] = useState<'merge' | 'replace' | 'skip-existing'>('merge');
+  const [selectedEntities, setSelectedEntities] = useState<string[]>(['medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications']);
+  const [importResult, setImportResult] = useState<any>(null);
+
   const tabs = [
     { id: 'general', name: 'General', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
     { id: 'security', name: 'Security', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
     { id: 'api-keys', name: 'API Keys', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
     { id: 'woocommerce', name: 'WooCommerce', icon: 'M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z' },
+    { id: 'backup', name: 'Backup & Restore', icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' },
   ];
 
   return (
@@ -1054,6 +1145,161 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Backup & Restore Tab */}
+        {activeTab === 'backup' && (
+          <div className="bg-white rounded-lg border border-[#dfedfb] p-6">
+            <h4 className="text-lg font-semibold text-[#435970] mb-4">Backup & Restore</h4>
+            <p className="text-sm text-[#7895b3] mb-6">
+              Export and import data for medicines, medicine categories, blogs, FAQs, and notifications.
+            </p>
+
+            {/* Export Section */}
+            <div className="mb-8 pb-8 border-b border-[#dfedfb]">
+              <h5 className="text-base font-semibold text-[#435970] mb-4">Export Backup</h5>
+              <p className="text-xs text-[#7895b3] mb-4">Select which entities to export:</p>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                {['medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications'].map((entity) => (
+                  <label key={entity} className="flex items-center gap-2 p-3 border border-[#dfedfb] rounded-lg cursor-pointer hover:bg-[#dfedfb]/30 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedEntities.includes(entity)}
+                      onChange={() => toggleEntity(entity)}
+                      className="w-4 h-4 text-[#435970] border-[#dfedfb] rounded focus:ring-[#7895b3] focus:ring-2"
+                    />
+                    <span className="text-sm text-[#435970] capitalize">{entity.replace('-', ' ')}</span>
+                  </label>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={isExporting || selectedEntities.length === 0}
+                className="px-6 py-2 bg-[#435970] text-white rounded-lg font-medium hover:bg-[#7895b3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isExporting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export Backup
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Import Section */}
+            <div>
+              <h5 className="text-base font-semibold text-[#435970] mb-4">Import Backup</h5>
+              
+              <div className="space-y-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#435970] mb-2">
+                    Import Mode
+                  </label>
+                  <select
+                    value={importMode}
+                    onChange={(e) => setImportMode(e.target.value as 'merge' | 'replace' | 'skip-existing')}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] bg-white"
+                  >
+                    <option value="merge">Merge - Update existing, add new</option>
+                    <option value="replace">Replace - Delete all existing, import new</option>
+                    <option value="skip-existing">Skip Existing - Only import new records</option>
+                  </select>
+                  <p className="text-xs text-[#7895b3] mt-1">
+                    {importMode === 'merge' && 'Updates existing records and adds new ones'}
+                    {importMode === 'replace' && '⚠️ WARNING: This will delete all existing data before importing'}
+                    {importMode === 'skip-existing' && 'Only imports records that don\'t already exist'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#435970] mb-2">
+                    Backup File (JSON)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#dfedfb] file:text-[#435970] hover:file:bg-[#7895b3] hover:file:text-white"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleImport}
+                disabled={isImporting || !importFile}
+                className="px-6 py-2 bg-[#435970] text-white rounded-lg font-medium hover:bg-[#7895b3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isImporting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Import Backup
+                  </>
+                )}
+              </button>
+
+              {/* Import Results */}
+              {importResult && (
+                <div className={`mt-6 p-4 rounded-lg border ${importResult.success ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                  <h6 className="font-semibold text-[#435970] mb-2">
+                    {importResult.success ? '✓ Import Successful' : '⚠ Import Completed with Errors'}
+                  </h6>
+                  <div className="space-y-2 text-sm">
+                    {Object.entries(importResult.summary || {}).map(([entity, count]: [string, any]) => (
+                      <div key={entity} className="text-[#435970]">
+                        <span className="capitalize font-medium">{entity.replace('-', ' ')}:</span> {count} imported
+                      </div>
+                    ))}
+                    {importResult.imported && Object.entries(importResult.imported).map(([entity, details]: [string, any]) => (
+                      <div key={entity} className="text-xs text-[#7895b3] ml-4">
+                        • {details.imported || 0} new, {details.updated || 0} updated, {details.skipped || 0} skipped
+                        {details.errors && details.errors.length > 0 && (
+                          <div className="text-red-600 mt-1">
+                            {details.errors.length} error(s)
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Info Box */}
+            <div className="mt-6 bg-[#dfedfb]/50 rounded-lg p-4">
+              <p className="text-sm text-[#435970] font-medium mb-2">Backup & Restore Information:</p>
+              <ul className="text-xs text-[#7895b3] list-disc list-inside space-y-1">
+                <li>Backups include all data for selected entities (medicines, categories, blogs, FAQs, notifications)</li>
+                <li>Export creates a JSON file that can be imported later</li>
+                <li>Import modes: Merge (update/add), Replace (delete all first), Skip Existing (only new)</li>
+                <li>Medicine categories are always exported with medicines due to dependencies</li>
+                <li>Regular backups are recommended to prevent data loss</li>
+              </ul>
             </div>
           </div>
         )}
