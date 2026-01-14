@@ -56,7 +56,7 @@ export default function EditBlogPage() {
         console.error('Error fetching blog:', error);
         setNotification({
           title: 'Error',
-          message: 'Failed to load blog. Redirecting...',
+          message: 'Failed to load content. Redirecting...',
           type: 'error',
         });
         setShowNotification(true);
@@ -171,7 +171,7 @@ export default function EditBlogPage() {
           <svg className="w-12 h-12 text-[#7895b3] animate-spin mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          <p className="text-[#7895b3]">Loading blog...</p>
+          <p className="text-[#7895b3]">Loading content...</p>
         </div>
       </div>
     );
@@ -182,8 +182,8 @@ export default function EditBlogPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-2xl font-bold text-[#435970] mb-1">Edit Blog</h3>
-          <p className="text-[#7895b3]">Update blog post information</p>
+          <h3 className="text-2xl font-bold text-[#435970] mb-1">Edit Featured Content</h3>
+          <p className="text-[#7895b3]">Update featured content information</p>
         </div>
         <Link
           href="/dashboard/blogs"
@@ -207,7 +207,7 @@ export default function EditBlogPage() {
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
-            placeholder="Enter blog title"
+            placeholder="Enter title"
           />
         </div>
 
@@ -223,7 +223,7 @@ export default function EditBlogPage() {
             value={formData.tagline}
             onChange={(e) => setFormData({ ...formData, tagline: e.target.value })}
             className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
-            placeholder="Enter blog tagline"
+            placeholder="Enter tagline"
           />
         </div>
 
@@ -235,7 +235,7 @@ export default function EditBlogPage() {
           <RichTextEditor
             content={formData.description}
             onChange={(content) => setFormData({ ...formData, description: content })}
-            placeholder="Enter blog description. Use the toolbar above to format your text, add links, lists, and more."
+            placeholder="Enter description. Use the toolbar above to format your text, add links, lists, and more."
           />
           {!formData.description && (
             <p className="text-xs text-red-500 mt-1">Please enter a description</p>
@@ -365,7 +365,7 @@ export default function EditBlogPage() {
             disabled={submitting}
             className="px-6 py-2 bg-[#435970] text-white rounded-lg font-medium hover:bg-[#7895b3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Updating...' : 'Update Blog'}
+            {submitting ? 'Updating...' : 'Update Content'}
           </button>
         </div>
       </form>

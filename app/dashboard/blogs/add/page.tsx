@@ -106,8 +106,8 @@ export default function AddBlogPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-2xl font-bold text-[#435970] mb-1">Create New Blog</h3>
-          <p className="text-[#7895b3]">Add a new blog post to your collection</p>
+          <h3 className="text-2xl font-bold text-[#435970] mb-1">Create New Featured Content</h3>
+          <p className="text-[#7895b3]">Add a new featured content item</p>
         </div>
         <Link
           href="/dashboard/blogs"
@@ -131,7 +131,7 @@ export default function AddBlogPage() {
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
-            placeholder="Enter blog title"
+            placeholder="Enter title"
           />
         </div>
 
@@ -147,7 +147,7 @@ export default function AddBlogPage() {
             value={formData.tagline}
             onChange={(e) => setFormData({ ...formData, tagline: e.target.value })}
             className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
-            placeholder="Enter blog tagline"
+            placeholder="Enter tagline"
           />
         </div>
 
@@ -159,7 +159,7 @@ export default function AddBlogPage() {
           <RichTextEditor
             content={formData.description}
             onChange={(content) => setFormData({ ...formData, description: content })}
-            placeholder="Enter blog description. Use the toolbar above to format your text, add links, lists, and more."
+            placeholder="Enter description. Use the toolbar above to format your text, add links, lists, and more."
           />
           {!formData.description && (
             <p className="text-xs text-red-500 mt-1">Please enter a description</p>
@@ -285,7 +285,7 @@ export default function AddBlogPage() {
             disabled={submitting}
             className="px-6 py-2 bg-[#435970] text-white rounded-lg font-medium hover:bg-[#7895b3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Creating...' : 'Create Blog'}
+            {submitting ? 'Creating...' : 'Create Content'}
           </button>
         </div>
       </form>

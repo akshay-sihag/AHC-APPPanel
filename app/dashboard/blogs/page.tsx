@@ -189,7 +189,7 @@ export default function BlogsPage() {
           <svg className="w-12 h-12 text-[#7895b3] animate-spin mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          <p className="text-[#7895b3]">Loading blogs...</p>
+          <p className="text-[#7895b3]">Loading featured content...</p>
         </div>
       </div>
     );
@@ -214,14 +214,14 @@ export default function BlogsPage() {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h3 className="text-2xl font-bold text-[#435970] mb-1">Blog Posts</h3>
-          <p className="text-[#7895b3]">Manage and monitor all blog posts</p>
+          <h3 className="text-2xl font-bold text-[#435970] mb-1">Featured Content</h3>
+          <p className="text-[#7895b3]">Manage and monitor all featured content</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
             <input
               type="text"
-              placeholder="Search blogs..."
+              placeholder="Search content..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full sm:w-64 px-4 py-2 pl-10 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
@@ -242,7 +242,7 @@ export default function BlogsPage() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Add Blog
+            Add Content
           </Link>
         </div>
       </div>
@@ -250,7 +250,7 @@ export default function BlogsPage() {
       {/* Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
-          <p className="text-sm text-[#7895b3] mb-1">Total Blogs</p>
+          <p className="text-sm text-[#7895b3] mb-1">Total Content</p>
           <p className="text-2xl font-bold text-[#435970]">{blogs.length}</p>
         </div>
         <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
@@ -271,7 +271,7 @@ export default function BlogsPage() {
       {selectedBlogs.size > 0 && (
         <div className="bg-[#435970] text-white rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="font-medium">{selectedBlogs.size} blog(s) selected</span>
+            <span className="font-medium">{selectedBlogs.size} item(s) selected</span>
           </div>
           <button
             onClick={handleBulkDelete}
@@ -340,16 +340,16 @@ export default function BlogsPage() {
                       <svg className="w-16 h-16 text-[#7895b3] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
                       </svg>
-                      <p className="text-lg font-medium text-[#435970] mb-2">No blogs found</p>
+                      <p className="text-lg font-medium text-[#435970] mb-2">No content found</p>
                       <p className="text-sm text-[#7895b3] mb-4">
-                        {searchTerm ? 'Try adjusting your search criteria' : 'Get started by creating your first blog post'}
+                        {searchTerm ? 'Try adjusting your search criteria' : 'Get started by creating your first featured content'}
                       </p>
                       {!searchTerm && (
                         <Link
                           href="/dashboard/blogs/add"
                           className="px-4 py-2 bg-[#435970] text-white rounded-lg font-medium hover:bg-[#7895b3] transition-colors inline-block"
                         >
-                          Add First Blog
+                          Add Content
                         </Link>
                       )}
                     </div>
@@ -478,7 +478,7 @@ export default function BlogsPage() {
           <div className="text-sm text-[#7895b3]">
             Showing <span className="font-semibold text-[#435970]">1</span> to{' '}
             <span className="font-semibold text-[#435970]">{filteredBlogs.length}</span> of{' '}
-            <span className="font-semibold text-[#435970]">{blogs.length}</span> blogs
+            <span className="font-semibold text-[#435970]">{blogs.length}</span> items
           </div>
           <div className="flex items-center gap-2">
             <button className="px-3 py-1 text-sm border border-[#dfedfb] rounded-lg text-[#435970] hover:bg-[#dfedfb] transition-colors">
@@ -499,8 +499,8 @@ export default function BlogsPage() {
           setBlogToDelete(null);
         }}
         onConfirm={handleDeleteConfirm}
-        title="Delete Blog"
-        message="Are you sure you want to delete this blog? This action cannot be undone."
+        title="Delete Content"
+        message="Are you sure you want to delete this content? This action cannot be undone."
         confirmText="Delete"
         cancelText="Cancel"
         type="danger"
