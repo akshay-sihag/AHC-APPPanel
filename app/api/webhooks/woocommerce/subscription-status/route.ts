@@ -19,14 +19,21 @@ export async function POST(request: NextRequest) {
     console.log('Raw body preview:', text.substring(0, 300));
 
     // Check headers
+    const contentType = request.headers.get('content-type') || '';
     const webhookTopic = request.headers.get('x-wc-webhook-topic');
     const webhookSource = request.headers.get('x-wc-webhook-source');
-    console.log('Headers:', { webhookTopic, webhookSource });
+    console.log('Headers:', { contentType, webhookTopic, webhookSource });
 
-    // Handle empty body or ping
+    // Handle empty body
     if (!text || !text.trim()) {
       console.log('Empty body - ping response');
       return NextResponse.json({ success: true, message: 'Ping received' });
+    }
+
+    // Handle form-urlencoded ping (e.g., "webhook_id=68")
+    if (text.includes('webhook_id=') && !text.startsWith('{')) {
+      console.log('WooCommerce ping (form-urlencoded):', text);
+      return NextResponse.json({ success: true, message: 'Webhook ping received' });
     }
 
     // Parse JSON
@@ -34,8 +41,8 @@ export async function POST(request: NextRequest) {
     try {
       body = JSON.parse(text);
     } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      return NextResponse.json({ success: true, message: 'Invalid JSON acknowledged' });
+      console.error('JSON parse error - treating as ping');
+      return NextResponse.json({ success: true, message: 'Acknowledged' });
     }
 
     // Handle WooCommerce ping (has webhook_id but no subscription data)
@@ -77,13 +84,15 @@ export async function POST(request: NextRequest) {
 
     if (customerEmail) {
       console.log('Sending push to:', customerEmail);
+      // Use same data format as CRUD notifications for Flutter compatibility
       pushResult = await sendPushNotificationToUser(
         customerEmail,
         title,
         message,
         undefined,
         {
-          type: 'subscription_status',
+          type: 'notification',  // Same as CRUD notifications
+          notificationType: 'subscription_status',
           icon,
           subscriptionId: String(subscriptionId),
           subscriptionStatus,
@@ -113,7 +122,7 @@ export async function POST(request: NextRequest) {
         },
       });
     } catch (dbError) {
-      console.log('DB log skipped (migration needed)');
+      console.log('DB log skipped');
     }
 
     console.log('=== SUBSCRIPTION WEBHOOK COMPLETE ===');
