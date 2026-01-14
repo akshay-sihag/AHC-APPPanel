@@ -602,10 +602,13 @@ export async function sendPushNotificationToUser(
   data?: Record<string, string>
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
+    console.log('Looking up user for push notification:', emailOrWpUserId);
+
+    // Case-insensitive email lookup
     const user = await prisma.appUser.findFirst({
       where: {
         OR: [
-          { email: emailOrWpUserId },
+          { email: { equals: emailOrWpUserId, mode: 'insensitive' } },
           { wpUserId: emailOrWpUserId },
         ],
         fcmToken: {
@@ -614,16 +617,21 @@ export async function sendPushNotificationToUser(
         status: 'Active',
       },
       select: {
+        id: true,
+        email: true,
         fcmToken: true,
       },
     });
 
     if (!user || !user.fcmToken) {
+      console.log('User not found or no FCM token for:', emailOrWpUserId);
       return {
         success: false,
-        error: 'User not found or no FCM token registered',
+        error: `User not found or no FCM token for: ${emailOrWpUserId}`,
       };
     }
+
+    console.log('Found user:', user.email, 'sending push...');
 
     return await sendPushNotification(
       user.fcmToken,

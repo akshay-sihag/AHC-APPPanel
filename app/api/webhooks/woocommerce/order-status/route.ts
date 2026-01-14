@@ -81,13 +81,21 @@ async function processOrderWebhook(body: any, request: NextRequest) {
     }
   }
 
-  // Extract order data
+  // Extract order data - check all possible email locations
   const orderId = body.id;
   const orderStatus = body.status;
-  const customerEmail = body.billing?.email || body.customer_email || body.email;
+  const billingEmail = body.billing?.email;
+  const customerEmail = billingEmail || body.customer_email || body.email;
   const orderNumber = body.number || body.order_number || orderId;
 
-  console.log('Order data:', { orderId, orderStatus, customerEmail, orderNumber });
+  console.log('=== ORDER WEBHOOK DEBUG ===');
+  console.log('Order ID:', orderId);
+  console.log('Order Status:', orderStatus);
+  console.log('Order Number:', orderNumber);
+  console.log('Billing Email:', billingEmail);
+  console.log('Customer Email (final):', customerEmail);
+  console.log('All billing data:', JSON.stringify(body.billing, null, 2));
+  console.log('===========================');
 
   // Validate required fields
   if (!orderId || !orderStatus) {
