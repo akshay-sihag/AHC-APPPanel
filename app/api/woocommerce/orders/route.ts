@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateApiKey } from '@/lib/middleware';
 import { filterFieldsArray, parseFieldsParam } from '@/lib/field-filter';
+import { normalizeApiUrl, buildAuthHeaders, getCustomerByEmail } from '@/lib/woocommerce-helpers';
 
 // Cache settings for 5 minutes to reduce database queries
 let cachedSettings: any = null;
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
       return settings;
     }
 
-    // Helper function to fetch orders from WooCommerce
+    // Helper function to fetch orders from WooCommerce (OPTIMIZED)
     async function fetchOrdersFromWooCommerce(email: string) {
       const settings = await getWooCommerceSettings();
 
@@ -92,85 +93,42 @@ export async function GET(request: NextRequest) {
         throw new Error('WooCommerce API credentials are not configured');
       }
 
-      // Prepare WooCommerce API URL
-      let apiUrl = settings.woocommerceApiUrl.replace(/\/$/, '');
-      
-      if (!apiUrl.includes('/wp-json/wc/')) {
-        const baseUrl = apiUrl.replace(/\/wp-json.*$/, '');
-        apiUrl = `${baseUrl}/wp-json/wc/v3`;
-      }
-      
-      if (!apiUrl.includes('/wp-json/wc/')) {
-        throw new Error('Invalid WooCommerce API URL format');
-      }
+      // Normalize API URL using shared helper
+      const apiUrl = normalizeApiUrl(settings.woocommerceApiUrl);
 
-      // Create Basic Auth header
-      const authString = Buffer.from(`${settings.woocommerceApiKey}:${settings.woocommerceApiSecret}`).toString('base64');
-      const authHeaders = {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
+      // Build auth headers using shared helper
+      const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
 
-      // Try to get customer by email
+      // OPTIMIZED: Get customer by email first (server-side filtering)
+      console.log(`[Orders API] Looking up customer by email: ${email}`);
+      const customer = await getCustomerByEmail(apiUrl, authHeaders, email);
+
       let customerId: number | null = null;
-      
-      try {
-        const customersUrl = new URL(`${apiUrl}/customers`);
-        customersUrl.searchParams.append('email', email);
-        customersUrl.searchParams.append('per_page', '1');
+      let ordersArray: any[] = [];
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-        const customersResponse = await fetch(customersUrl.toString(), {
-          method: 'GET',
-          headers: authHeaders,
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (customersResponse.ok) {
-          const customersContentType = customersResponse.headers.get('content-type');
-          const isCustomersJson = customersContentType && customersContentType.includes('application/json');
-          
-          if (isCustomersJson) {
-            const customers = await customersResponse.json();
-            const customersArray = Array.isArray(customers) ? customers : [customers];
-            if (customersArray.length > 0 && customersArray[0].id) {
-              customerId = parseInt(customersArray[0].id);
-            }
-          }
-        }
-      } catch (customerError) {
-        // Continue without customer ID
+      if (!customer) {
+        console.log(`[Orders API] No customer found for email ${email}. Returning empty orders.`);
+        // Return empty result - no customer means no orders
+        return {
+          success: true,
+          email: email,
+          count: 0,
+          orders: [],
+        };
       }
 
-      // Fetch orders
+      customerId = customer.id;
+      console.log(`[Orders API] Found customer ID ${customerId}. Fetching orders with server-side filter.`);
+
+      // Fetch orders with customer ID filter (server-side filtering - MUCH faster)
       const ordersUrl = new URL(`${apiUrl}/orders`);
-      
-      if (customerId) {
-        ordersUrl.searchParams.append('customer', customerId.toString());
-      }
+      ordersUrl.searchParams.append('customer', customerId.toString());
       ordersUrl.searchParams.append('per_page', '100');
 
-      let woocommerceResponse = await fetch(ordersUrl.toString(), {
+      const woocommerceResponse = await fetch(ordersUrl.toString(), {
         method: 'GET',
         headers: authHeaders,
       });
-
-      // If we have customerId but got no orders or error, try fetching all and filter by email
-      if (customerId && (!woocommerceResponse.ok || woocommerceResponse.status === 404)) {
-        const allOrdersUrl = new URL(`${apiUrl}/orders`);
-        allOrdersUrl.searchParams.append('per_page', '100');
-        
-        woocommerceResponse = await fetch(allOrdersUrl.toString(), {
-          method: 'GET',
-          headers: authHeaders,
-        });
-        customerId = null;
-      }
 
       if (!woocommerceResponse.ok) {
         throw new Error(`WooCommerce API returned ${woocommerceResponse.status}`);
@@ -179,25 +137,15 @@ export async function GET(request: NextRequest) {
       // Parse JSON response
       const contentType = woocommerceResponse.headers.get('content-type');
       const isJson = contentType && contentType.includes('application/json');
-      
+
       if (!isJson) {
         throw new Error('WooCommerce API returned invalid response format');
       }
 
       const orders = await woocommerceResponse.json();
-      let ordersArray = Array.isArray(orders) ? orders : [orders];
+      ordersArray = Array.isArray(orders) ? orders : [orders];
 
-      // Filter by email if we don't have customerId
-      if (!customerId && ordersArray.length > 0) {
-        ordersArray = ordersArray.filter((order: any) => {
-          const orderEmail = (
-            order.billing?.email?.toLowerCase().trim() ||
-            order.customer_email?.toLowerCase().trim() ||
-            ''
-          );
-          return orderEmail === email;
-        });
-      }
+      console.log(`[Orders API] Found ${ordersArray.length} orders for customer ID ${customerId}`);
 
       // STEP 1: Collect all unique product_ids from all orders
       const allProductIds: number[] = [];

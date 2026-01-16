@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateApiKey } from '@/lib/middleware';
+import { normalizeApiUrl, buildAuthHeaders, getCustomerByEmailWithFallback } from '@/lib/woocommerce-helpers';
 
 // Cache settings for 5 minutes to reduce database queries
 let cachedSettings: any = null;
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
       return settings;
     }
 
-    // Helper function to fetch billing address from WooCommerce
+    // Helper function to fetch billing address from WooCommerce (OPTIMIZED)
     async function fetchBillingAddressFromWooCommerce(email: string) {
       const settings = await getWooCommerceSettings();
 
@@ -96,158 +97,15 @@ export async function GET(request: NextRequest) {
         throw new Error('WooCommerce API credentials are not configured');
       }
 
-      // Prepare WooCommerce API URL
-      let apiUrl = settings.woocommerceApiUrl.replace(/\/$/, '');
-      
-      if (!apiUrl.includes('/wp-json/wc/')) {
-        const baseUrl = apiUrl.replace(/\/wp-json.*$/, '');
-        apiUrl = `${baseUrl}/wp-json/wc/v3`;
-      }
-      
-      if (!apiUrl.includes('/wp-json/wc/')) {
-        throw new Error('Invalid WooCommerce API URL format');
-      }
+      // Normalize API URL using shared helper
+      const apiUrl = normalizeApiUrl(settings.woocommerceApiUrl);
 
-      // Create Basic Auth header
-      const authString = Buffer.from(`${settings.woocommerceApiKey}:${settings.woocommerceApiSecret}`).toString('base64');
-      const authHeaders = {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
+      // Build auth headers using shared helper
+      const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
 
-      // Try to get customer by email
-      let customerId: number | null = null;
-      let customer: any = null;
-      
-      try {
-        const customersUrl = new URL(`${apiUrl}/customers`);
-        customersUrl.searchParams.append('email', email);
-        customersUrl.searchParams.append('per_page', '1');
-
-        const customersResponse = await fetch(customersUrl.toString(), {
-          method: 'GET',
-          headers: authHeaders,
-        });
-
-        const customersContentType = customersResponse.headers.get('content-type');
-        const isCustomersJson = customersContentType && customersContentType.includes('application/json');
-
-        if (customersResponse.ok && isCustomersJson) {
-          const customers = await customersResponse.json();
-          const customersArray = Array.isArray(customers) ? customers : [customers];
-          
-          if (customersArray.length > 0 && customersArray[0].id) {
-            customer = customersArray[0];
-            customerId = parseInt(customersArray[0].id);
-          }
-        }
-      } catch (customerError) {
-        // Continue to try alternative methods
-      }
-
-      // If customer not found, try to find from orders or subscriptions
-      if (!customer) {
-        // Try orders first
-        try {
-          const ordersUrl = new URL(`${apiUrl}/orders`);
-          ordersUrl.searchParams.append('per_page', '10');
-          
-          const ordersResponse = await fetch(ordersUrl.toString(), {
-            method: 'GET',
-            headers: authHeaders,
-          });
-
-          if (ordersResponse.ok) {
-            const ordersContentType = ordersResponse.headers.get('content-type');
-            const isOrdersJson = ordersContentType && ordersContentType.includes('application/json');
-            
-            if (isOrdersJson) {
-              const orders = await ordersResponse.json();
-              const ordersArray = Array.isArray(orders) ? orders : [orders];
-              
-              const matchingOrder = ordersArray.find((order: any) => {
-                const orderEmail = (
-                  order.billing?.email?.toLowerCase().trim() ||
-                  order.customer_email?.toLowerCase().trim() ||
-                  ''
-                );
-                return orderEmail === email && order.customer_id;
-              });
-              
-              if (matchingOrder && matchingOrder.customer_id) {
-                customerId = parseInt(matchingOrder.customer_id);
-                
-                const customerByIdUrl = `${apiUrl}/customers/${customerId}`;
-                const customerByIdResponse = await fetch(customerByIdUrl, {
-                  method: 'GET',
-                  headers: authHeaders,
-                });
-                
-                if (customerByIdResponse.ok) {
-                  const customerContentType = customerByIdResponse.headers.get('content-type');
-                  if (customerContentType && customerContentType.includes('application/json')) {
-                    customer = await customerByIdResponse.json();
-                  }
-                }
-              }
-            }
-          }
-        } catch (orderError) {
-          // Continue
-        }
-
-        // Try subscriptions if still not found
-        if (!customer) {
-          try {
-            const subscriptionsUrl = new URL(`${apiUrl}/subscriptions`);
-            subscriptionsUrl.searchParams.append('per_page', '10');
-            
-            const subscriptionsResponse = await fetch(subscriptionsUrl.toString(), {
-              method: 'GET',
-              headers: authHeaders,
-            });
-
-            if (subscriptionsResponse.ok) {
-              const subsContentType = subscriptionsResponse.headers.get('content-type');
-              const isSubsJson = subsContentType && subsContentType.includes('application/json');
-              
-              if (isSubsJson) {
-                const subscriptions = await subscriptionsResponse.json();
-                const subsArray = Array.isArray(subscriptions) ? subscriptions : [subscriptions];
-                
-                const matchingSub = subsArray.find((sub: any) => {
-                  const subEmail = (
-                    sub.billing?.email?.toLowerCase().trim() ||
-                    sub.customer_email?.toLowerCase().trim() ||
-                    ''
-                  );
-                  return subEmail === email && sub.customer_id;
-                });
-                
-                if (matchingSub && matchingSub.customer_id) {
-                  customerId = parseInt(matchingSub.customer_id);
-                  
-                  const customerByIdUrl = `${apiUrl}/customers/${customerId}`;
-                  const customerByIdResponse = await fetch(customerByIdUrl, {
-                    method: 'GET',
-                    headers: authHeaders,
-                  });
-                  
-                  if (customerByIdResponse.ok) {
-                    const customerContentType = customerByIdResponse.headers.get('content-type');
-                    if (customerContentType && customerContentType.includes('application/json')) {
-                      customer = await customerByIdResponse.json();
-                    }
-                  }
-                }
-              }
-            }
-          } catch (subError) {
-            // Continue
-          }
-        }
-      }
+      // OPTIMIZED: Use shared helper with fallback (tries customer API first, then orders/subscriptions)
+      console.log(`[Billing Address API] Looking up customer by email: ${email}`);
+      const customer = await getCustomerByEmailWithFallback(apiUrl, authHeaders, email);
 
       // If customer still not found, return empty billing address
       if (!customer) {
@@ -404,164 +262,28 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Prepare WooCommerce API URL
-    let apiUrl = settings.woocommerceApiUrl.replace(/\/$/, '');
-    
-    // Auto-fix API URL if it's missing the wp-json path
-    if (!apiUrl.includes('/wp-json/wc/')) {
-      const baseUrl = apiUrl.replace(/\/wp-json.*$/, '');
-      apiUrl = `${baseUrl}/wp-json/wc/v3`;
-      console.warn(`WooCommerce API URL was missing /wp-json/wc/ path. Auto-corrected to: ${apiUrl}`);
-    }
-    
-    // Validate API URL format
-    if (!apiUrl.includes('/wp-json/wc/')) {
+    // OPTIMIZED: Use shared helpers for API URL and auth headers
+    let apiUrl: string;
+    try {
+      apiUrl = normalizeApiUrl(settings.woocommerceApiUrl);
+    } catch (error) {
       return NextResponse.json(
         {
           error: 'Invalid WooCommerce API URL format',
-          details: process.env.NODE_ENV === 'development' 
-            ? `The API URL "${settings.woocommerceApiUrl}" is invalid. It should be in the format: https://yourstore.com/wp-json/wc/v3` 
+          details: process.env.NODE_ENV === 'development' && error instanceof Error
+            ? error.message
             : 'Please check your WooCommerce API URL in admin settings.',
         },
         { status: 400 }
       );
     }
 
-    // Create Basic Auth header for WooCommerce API
-    const authString = Buffer.from(
-      `${settings.woocommerceApiKey}:${settings.woocommerceApiSecret}`
-    ).toString('base64');
+    const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
 
-    const authHeaders = {
-      'Authorization': `Basic ${authString}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-
-    // Try to get customer by email - similar to orders/subscriptions approach
-    let customerId: number | null = null;
-    let customer: any = null;
-    
-    try {
-      const customersUrl = new URL(`${apiUrl}/customers`);
-      customersUrl.searchParams.append('email', normalizedEmail);
-      customersUrl.searchParams.append('per_page', '1');
-
-      const customersResponse = await fetch(customersUrl.toString(), {
-        method: 'GET',
-        headers: authHeaders,
-      });
-
-      // Check if response is JSON
-      const customersContentType = customersResponse.headers.get('content-type');
-      const isCustomersJson = customersContentType && customersContentType.includes('application/json');
-
-      if (customersResponse.ok && isCustomersJson) {
-        try {
-          const customersText = await customersResponse.text();
-          const customers = JSON.parse(customersText);
-          const customersArray = Array.isArray(customers) ? customers : [customers];
-          
-          if (customersArray.length > 0 && customersArray[0].id) {
-            customer = customersArray[0];
-            customerId = parseInt(customersArray[0].id);
-            console.log(`Found customer ID ${customerId} for email ${normalizedEmail}`);
-          } else {
-            console.log(`No customer found for email ${normalizedEmail}, will try to find from orders/subscriptions`);
-          }
-        } catch (parseError) {
-          console.error('Failed to parse customers response:', parseError);
-          // Continue to try alternative methods
-        }
-      } else {
-        console.log(`Customer lookup returned ${customersResponse.status}, will try to find from orders/subscriptions`);
-      }
-    } catch (customerError) {
-      console.error('Error fetching customer:', customerError);
-      // Continue to try alternative methods
-    }
-
-    // If customer not found, try to find customer ID from orders or subscriptions in parallel
-    if (!customer) {
-      // Make parallel requests to orders and subscriptions to find customer ID
-      // Use smaller per_page (3) for faster lookup
-      const [ordersResponse, subscriptionsResponse] = await Promise.allSettled([
-        fetch(`${apiUrl}/orders?per_page=3`, { method: 'GET', headers: authHeaders }),
-        fetch(`${apiUrl}/subscriptions?per_page=3`, { method: 'GET', headers: authHeaders }),
-      ]);
-
-      // Try orders first (more common)
-      if (ordersResponse.status === 'fulfilled' && ordersResponse.value.ok) {
-        try {
-          const ordersContentType = ordersResponse.value.headers.get('content-type');
-          if (ordersContentType && ordersContentType.includes('application/json')) {
-            const orders = await ordersResponse.value.json();
-            const ordersArray = Array.isArray(orders) ? orders : [orders];
-            
-            // Find first order with matching email
-            const matchingOrder = ordersArray.find((order: any) => {
-              const orderEmail = (
-                order.billing?.email?.toLowerCase().trim() ||
-                order.customer_email?.toLowerCase().trim() ||
-                ''
-              );
-              return orderEmail === normalizedEmail && order.customer_id;
-            });
-            
-            if (matchingOrder?.customer_id) {
-              customerId = parseInt(matchingOrder.customer_id);
-            }
-          }
-        } catch (e) {
-          // Ignore parse errors, continue
-        }
-      }
-
-      // Try subscriptions if orders didn't find customer
-      if (!customerId && subscriptionsResponse.status === 'fulfilled' && subscriptionsResponse.value.ok) {
-        try {
-          const subsContentType = subscriptionsResponse.value.headers.get('content-type');
-          if (subsContentType && subsContentType.includes('application/json')) {
-            const subscriptions = await subscriptionsResponse.value.json();
-            const subsArray = Array.isArray(subscriptions) ? subscriptions : [subscriptions];
-            
-            const matchingSub = subsArray.find((sub: any) => {
-              const subEmail = (
-                sub.billing?.email?.toLowerCase().trim() ||
-                sub.customer_email?.toLowerCase().trim() ||
-                ''
-              );
-              return subEmail === normalizedEmail && sub.customer_id;
-            });
-            
-            if (matchingSub?.customer_id) {
-              customerId = parseInt(matchingSub.customer_id);
-            }
-          }
-        } catch (e) {
-          // Ignore parse errors, continue
-        }
-      }
-
-      // If we found customer ID, fetch customer details
-      if (customerId) {
-        try {
-          const customerByIdResponse = await fetch(`${apiUrl}/customers/${customerId}`, {
-            method: 'GET',
-            headers: authHeaders,
-          });
-          
-          if (customerByIdResponse.ok) {
-            const customerContentType = customerByIdResponse.headers.get('content-type');
-            if (customerContentType && customerContentType.includes('application/json')) {
-              customer = await customerByIdResponse.json();
-            }
-          }
-        } catch (e) {
-          // Ignore errors, will create new customer
-        }
-      }
-    }
+    // OPTIMIZED: Use shared helper with fallback to find customer
+    console.log(`[Billing Address PUT] Looking up customer by email: ${normalizedEmail}`);
+    let customer = await getCustomerByEmailWithFallback(apiUrl, authHeaders, normalizedEmail);
+    let customerId: number | null = customer?.id || null;
 
     // If customer still not found, create a new customer with the billing address
     if (!customer) {

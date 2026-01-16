@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateApiKey } from '@/lib/middleware';
 import { filterFieldsArray, parseFieldsParam } from '@/lib/field-filter';
+import { normalizeApiUrl, buildAuthHeaders, getCustomerByEmail } from '@/lib/woocommerce-helpers';
 
 // Cache settings for 5 minutes to reduce database queries
 let cachedSettings: any = null;
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
       return settings;
     }
 
-    // Helper function to fetch subscriptions from WooCommerce
+    // Helper function to fetch subscriptions from WooCommerce (OPTIMIZED)
     async function fetchSubscriptionsFromWooCommerce(email: string) {
       const settings = await getWooCommerceSettings();
 
@@ -87,35 +88,43 @@ export async function GET(request: NextRequest) {
         throw new Error('WooCommerce API credentials are not configured');
       }
 
-      // Prepare WooCommerce API URL
-      let apiUrl = settings.woocommerceApiUrl.replace(/\/$/, '');
-      
-      if (!apiUrl.includes('/wp-json/wc/')) {
-        const baseUrl = apiUrl.replace(/\/wp-json.*$/, '');
-        apiUrl = `${baseUrl}/wp-json/wc/v3`;
-      }
-      
-      if (!apiUrl.includes('/wp-json/wc/')) {
-        throw new Error('Invalid WooCommerce API URL format');
+      // Normalize API URL using shared helper
+      const apiUrl = normalizeApiUrl(settings.woocommerceApiUrl);
+
+      // Build auth headers using shared helper
+      const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
+
+      // OPTIMIZED: Get customer by email first (server-side filtering)
+      console.log(`[Subscriptions API] Looking up customer by email: ${email}`);
+      const customer = await getCustomerByEmail(apiUrl, authHeaders, email);
+
+      let subscriptionsArray: any[] = [];
+      let customerId: number | null = null;
+
+      if (!customer) {
+        console.log(`[Subscriptions API] No customer found for email ${email}. Returning empty subscriptions.`);
+        // Return empty result - no customer means no subscriptions
+        return {
+          success: true,
+          email: email,
+          customerId: null,
+          count: 0,
+          subscriptions: [],
+        };
       }
 
-      // Create Basic Auth header
-      const authString = Buffer.from(`${settings.woocommerceApiKey}:${settings.woocommerceApiSecret}`).toString('base64');
-      const authHeaders = {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
+      customerId = customer.id;
+      console.log(`[Subscriptions API] Found customer ID ${customerId}. Fetching subscriptions with server-side filter.`);
 
-      // Helper function to fetch subscriptions with optional customer filter
-      async function fetchSubscriptionsByCustomer(customerId: number | null = null): Promise<any[]> {
+      // Helper function to fetch subscriptions by customer ID with pagination
+      async function fetchSubscriptionsByCustomer(customerId: number): Promise<any[]> {
         let allSubscriptions: any[] = [];
         let currentPage = 1;
         let totalPages = 1;
         let apiUrlToUse = apiUrl;
         let isV1Endpoint = false;
 
-        // Try v3 endpoint first, fallback to v1 if needed
+        // Fetch subscriptions with customer ID filter (server-side filtering)
         do {
           let subscriptionsUrl: URL;
           let woocommerceResponse: Response;
@@ -123,11 +132,8 @@ export async function GET(request: NextRequest) {
           subscriptionsUrl = new URL(`${apiUrlToUse}/subscriptions`);
           subscriptionsUrl.searchParams.append('per_page', '100');
           subscriptionsUrl.searchParams.append('page', currentPage.toString());
-          
-          // If customer ID provided, filter by it
-          if (customerId) {
-            subscriptionsUrl.searchParams.append('customer', customerId.toString());
-          }
+          // Server-side filter by customer ID - this is the KEY optimization
+          subscriptionsUrl.searchParams.append('customer', customerId.toString());
 
           woocommerceResponse = await fetch(subscriptionsUrl.toString(), {
             method: 'GET',
@@ -141,10 +147,7 @@ export async function GET(request: NextRequest) {
             subscriptionsUrl = new URL(`${apiUrlToUse}/subscriptions`);
             subscriptionsUrl.searchParams.append('per_page', '100');
             subscriptionsUrl.searchParams.append('page', currentPage.toString());
-            
-            if (customerId) {
-              subscriptionsUrl.searchParams.append('customer', customerId.toString());
-            }
+            subscriptionsUrl.searchParams.append('customer', customerId.toString());
 
             woocommerceResponse = await fetch(subscriptionsUrl.toString(), {
               method: 'GET',
@@ -166,14 +169,14 @@ export async function GET(request: NextRequest) {
           // Parse JSON response
           const contentType = woocommerceResponse.headers.get('content-type');
           const isJson = contentType && contentType.includes('application/json');
-          
+
           if (!isJson) {
             throw new Error('WooCommerce API returned invalid response format');
           }
 
           const pageSubscriptions = await woocommerceResponse.json();
           const pageSubscriptionsArray = Array.isArray(pageSubscriptions) ? pageSubscriptions : [pageSubscriptions];
-          
+
           // If no subscriptions on this page, we're done
           if (pageSubscriptionsArray.length === 0) {
             break;
@@ -194,10 +197,10 @@ export async function GET(request: NextRequest) {
           // Move to next page
           currentPage++;
 
-          // Safety check: if we've fetched more than 10 pages (1000 subscriptions), break
-          // This prevents infinite loops and excessive API calls
-          if (currentPage > 10) {
-            console.warn('Reached maximum page limit (10 pages = 1000 subscriptions). Some subscriptions may be missing.');
+          // With customer filter, we expect very few subscriptions per customer
+          // Still keep safety limit but much less likely to hit it
+          if (currentPage > 3) {
+            console.warn('[Subscriptions API] Reached 3 pages of subscriptions for single customer (300+ subscriptions). Breaking.');
             break;
           }
 
@@ -211,76 +214,18 @@ export async function GET(request: NextRequest) {
         return allSubscriptions;
       }
 
-      // Helper function to filter subscriptions by email
-      function filterSubscriptionsByEmail(subscriptions: any[], emailToMatch: string): any[] {
-        const emailLower = emailToMatch.toLowerCase().trim();
-        return subscriptions.filter((sub: any) => {
-          const subEmail = (
-            sub.billing?.email?.toLowerCase().trim() ||
-            sub.customer_email?.toLowerCase().trim() ||
-            sub.email?.toLowerCase().trim() ||
-            ''
-          );
-          return subEmail === emailLower;
-        });
-      }
+      // Fetch subscriptions using customer ID (server-side filtering - MUCH faster)
+      subscriptionsArray = await fetchSubscriptionsByCustomer(customerId);
+      console.log(`[Subscriptions API] Found ${subscriptionsArray.length} subscriptions for customer ID ${customerId}`);
 
-      // Method 1: Fetch all subscriptions directly and filter by email (primary method)
-      console.log(`[Subscriptions API] Method 1: Fetching all subscriptions and filtering by email: ${email}`);
-      const allSubscriptions = await fetchSubscriptionsByCustomer(null);
-      console.log(`[Subscriptions API] Fetched ${allSubscriptions.length} total subscriptions from WooCommerce`);
-
-      let subscriptionsArray = filterSubscriptionsByEmail(allSubscriptions, email);
-      console.log(`[Subscriptions API] After email filtering: ${subscriptionsArray.length} subscriptions match email ${email}`);
-
-      // Method 2: Fallback - if no subscriptions found, try customer lookup by email
-      let customerId: number | null = null;
-      if (subscriptionsArray.length === 0) {
-        console.log(`[Subscriptions API] No subscriptions found by direct search. Trying fallback: customer lookup by email.`);
-        
-        try {
-          // Look up customer by email
-          const customersUrl = new URL(`${apiUrl}/customers`);
-          customersUrl.searchParams.append('email', email);
-          customersUrl.searchParams.append('per_page', '1');
-
-          const customerResponse = await fetch(customersUrl.toString(), {
-            method: 'GET',
-            headers: authHeaders,
-          });
-
-          if (customerResponse.ok) {
-            const customers = await customerResponse.json();
-            const customersArray = Array.isArray(customers) ? customers : [customers];
-            if (customersArray.length > 0 && customersArray[0].id) {
-              customerId = parseInt(customersArray[0].id, 10);
-              console.log(`[Subscriptions API] Found customer ID ${customerId} for email ${email}`);
-              
-              // Fetch subscriptions by customer ID
-              console.log(`[Subscriptions API] Method 2: Fetching subscriptions by customer ID ${customerId}`);
-              subscriptionsArray = await fetchSubscriptionsByCustomer(customerId);
-              console.log(`[Subscriptions API] Found ${subscriptionsArray.length} subscriptions for customer ID ${customerId}`);
-            } else {
-              console.log(`[Subscriptions API] Customer not found by email ${email}`);
-            }
-          }
-        } catch (customerError) {
-          console.warn('[Subscriptions API] Customer lookup fallback failed:', customerError);
-        }
-      }
-
-      // Log all subscription emails for debugging
+      // Log subscription details for debugging
       if (subscriptionsArray.length > 0) {
-        const allEmails = subscriptionsArray.map((sub: any) => {
-          const subEmail = (
-            sub.billing?.email?.toLowerCase().trim() ||
-            sub.customer_email?.toLowerCase().trim() ||
-            sub.email?.toLowerCase().trim() ||
-            ''
-          );
-          return { id: sub.id, email: subEmail, status: sub.status, date_created: sub.date_created };
-        });
-        console.log(`[Subscriptions API] Final subscriptions found:`, JSON.stringify(allEmails, null, 2));
+        const subscriptionSummary = subscriptionsArray.map((sub: any) => ({
+          id: sub.id,
+          status: sub.status,
+          date_created: sub.date_created,
+        }));
+        console.log(`[Subscriptions API] Subscriptions:`, JSON.stringify(subscriptionSummary, null, 2));
       }
 
       // Enrich subscriptions with all status information
