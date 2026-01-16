@@ -323,7 +323,7 @@ export async function GET(request: NextRequest) {
           return false;
         });
 
-        // Transform line items with all required fields
+        // Transform line items with required fields
         const transformedLineItems = (order.line_items || []).map((item: any) => {
           let imageSrc = null;
 
@@ -340,7 +340,6 @@ export async function GET(request: NextRequest) {
             name: item.name || 'Unknown Product',
             quantity: item.quantity || 1,
             price: item.price || '0',
-            subtotal: item.subtotal || '0',
             total: item.total || '0',
             sku: item.sku || '',
             image: { src: imageSrc },
@@ -356,8 +355,14 @@ export async function GET(request: NextRequest) {
         
         // Check if this order is a parent of any subscription
         const isParentOfSubscription = parentSubscriptionIds.length > 0;
+        
+        // Determine order type at the order level
+        const orderType = determineOrderType(order, isParentOfSubscription);
 
-        // Build related_orders - orders that share the same subscription
+        // Build related_orders - include both related orders AND subscriptions
+        const relatedOrdersList: any[] = [];
+        
+        // Add related orders (other orders sharing the same subscription)
         const relatedOrderIds: Set<number> = new Set();
         orderSubscriptionIds.forEach(subId => {
           const relatedIds = subscriptionOrdersMap.get(subId) || [];
@@ -368,30 +373,55 @@ export async function GET(request: NextRequest) {
           });
         });
 
-        const relatedOrders = [...relatedOrderIds].map(relatedOrderId => {
+        [...relatedOrderIds].forEach(relatedOrderId => {
           const relatedOrder = ordersById.get(relatedOrderId);
-          if (!relatedOrder) return null;
+          if (!relatedOrder) return;
           
           // Check if related order is parent of any subscription
           const relatedIsParent = (orderIdToSubscriptionIds.get(relatedOrderId) || []).length > 0;
+          const relatedType = determineOrderType(relatedOrder, relatedIsParent);
           
-          return {
+          // Determine relationship label
+          let relationship = 'Related Order';
+          if (relatedType === 'parent') relationship = 'Parent Order';
+          else if (relatedType === 'renewal') relationship = 'Renewal Order';
+          else if (relatedType === 'switch') relationship = 'Switch Order';
+          else if (relatedType === 'resubscribe') relationship = 'Resubscribe Order';
+          
+          relatedOrdersList.push({
             id: relatedOrder.id,
-            number: relatedOrder.number || `ORD-${relatedOrder.id}`,
+            number: relatedOrder.number || `${relatedOrder.id}`,
             status: relatedOrder.status || 'unknown',
             date_created: relatedOrder.date_created || relatedOrder.date_created_gmt || null,
             total: relatedOrder.total || '0',
-            type: determineOrderType(relatedOrder, relatedIsParent),
-          };
-        }).filter(Boolean);
+            type: relatedType,
+            relationship: relationship,
+          });
+        });
 
-        // Build related_subscriptions
+        // Add related subscriptions to related_orders as well (with type: "subscription")
+        orderSubscriptionIds.forEach(subId => {
+          const subscription = subscriptionsMap.get(subId);
+          if (subscription) {
+            relatedOrdersList.push({
+              id: subscription.id,
+              number: subscription.number || `${subscription.id}`,
+              status: subscription.status || 'unknown',
+              date_created: subscription.date_created || subscription.date_created_gmt || null,
+              total: subscription.total || '0',
+              type: 'subscription',
+              relationship: 'Subscription',
+            });
+          }
+        });
+
+        // Build related_subscriptions (separate array for subscription-specific data)
         const relatedSubscriptions = orderSubscriptionIds.map(subId => {
           const subscription = subscriptionsMap.get(subId);
           if (!subscription) {
             return {
               id: subId,
-              number: `SUB-${subId}`,
+              number: `${subId}`,
               status: 'unknown',
               total: '0',
               billing_period: null,
@@ -400,7 +430,7 @@ export async function GET(request: NextRequest) {
           
           return {
             id: subscription.id,
-            number: subscription.number || `SUB-${subscription.id}`,
+            number: subscription.number || `${subscription.id}`,
             status: subscription.status || 'unknown',
             total: subscription.total || '0',
             billing_period: subscription.billing_period || null,
@@ -410,15 +440,15 @@ export async function GET(request: NextRequest) {
         // Return all required fields
         return {
           id: order.id,
-          number: order.number || `ORD-${order.id}`,
+          number: order.number || `${order.id}`,
           status: order.status || 'unknown',
           date_created: order.date_created || order.date_created_gmt || null,
           total: order.total || '0',
           currency: order.currency || 'USD',
           parent_id: order.parent_id || 0,
-          subscription_ids: orderSubscriptionIds,
-          related_orders: relatedOrders,
-          related_subscriptions: relatedSubscriptions,
+          type: orderType,
+          payment_method: order.payment_method || null,
+          payment_method_title: order.payment_method_title || null,
           billing: order.billing ? {
             first_name: order.billing.first_name || '',
             last_name: order.billing.last_name || '',
@@ -441,9 +471,10 @@ export async function GET(request: NextRequest) {
             postcode: order.shipping.postcode || '',
             country: order.shipping.country || '',
           } : null,
-          payment_method: order.payment_method || null,
-          payment_method_title: order.payment_method_title || null,
           line_items: transformedLineItems,
+          subscription_ids: orderSubscriptionIds,
+          related_orders: relatedOrdersList,
+          related_subscriptions: relatedSubscriptions,
           meta_data: relevantMetaData,
         };
       });
