@@ -94,8 +94,10 @@ export async function getCustomerByEmail(
     const normalizedEmail = email.toLowerCase().trim();
 
     // Use official WooCommerce customer endpoint with email filter
+    // Include role=all to search across all user roles (customer, administrator, etc.)
     const customersUrl = new URL(`${apiUrl}/customers`);
     customersUrl.searchParams.append('email', normalizedEmail);
+    customersUrl.searchParams.append('role', 'all');
     customersUrl.searchParams.append('per_page', '1');
 
     console.log(`[WooCommerce Helper] Looking up customer by email: ${normalizedEmail}`);
