@@ -165,6 +165,7 @@ export async function GET(
         total: order.total || '0',
         line_items: transformedLineItems,
         meta_data: trackingMetaData,
+        type: null as string | null, // Will be set after enrichment
       };
     }
 

@@ -312,8 +312,9 @@ export async function PUT(request: NextRequest) {
           
           if (isCreateJson) {
             const createText = await createResponse.text();
-            customer = JSON.parse(createText);
-            customerId = customer.id;
+            const createdCustomer = JSON.parse(createText);
+            customer = createdCustomer;
+            customerId = createdCustomer?.id ?? null;
             console.log(`Created new customer with ID ${customerId} for email ${normalizedEmail}`);
           }
         } else {
@@ -345,7 +346,7 @@ export async function PUT(request: NextRequest) {
 
     // Ensure customerId is set from customer object
     if (!customerId && customer && customer.id) {
-      customerId = parseInt(customer.id);
+      customerId = customer.id;
     }
 
     if (!customerId) {
@@ -359,10 +360,10 @@ export async function PUT(request: NextRequest) {
     // Merge with existing billing data to preserve fields not being updated
     // Only update fields that are provided in the request
     const updatedBilling = {
-      ...(customer.billing || {}),
+      ...(customer?.billing || {}),
       ...billing,
       // Ensure email is set
-      email: billing.email || customer.billing?.email || normalizedEmail,
+      email: billing.email || customer?.billing?.email || normalizedEmail,
     };
 
     // Validate required fields for billing address

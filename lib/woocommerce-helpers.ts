@@ -12,6 +12,7 @@ export interface WooCommerceCustomer {
   email: string;
   first_name: string;
   last_name: string;
+  phone?: string;
   billing?: {
     first_name?: string;
     last_name?: string;
