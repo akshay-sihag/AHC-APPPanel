@@ -85,6 +85,44 @@ export async function GET(request: NextRequest) {
       return settings;
     }
 
+    // Helper function to extract subscription IDs from order meta_data
+    function extractSubscriptionIdsFromMeta(order: any): number[] {
+      const subscriptionIds: number[] = [];
+      
+      if (order.meta_data && Array.isArray(order.meta_data)) {
+        for (const meta of order.meta_data) {
+          // Check for various subscription-related meta keys
+          if (meta.key === '_subscription_renewal' || 
+              meta.key === '_subscription_switch' ||
+              meta.key === '_subscription_resubscribe' ||
+              meta.key === '_subscription_id' ||
+              meta.key === 'subscription_id') {
+            const subId = parseInt(meta.value, 10);
+            if (!isNaN(subId) && !subscriptionIds.includes(subId)) {
+              subscriptionIds.push(subId);
+            }
+          }
+        }
+      }
+      
+      return subscriptionIds;
+    }
+
+    // Helper function to determine order type based on meta_data and context
+    function determineOrderType(order: any, isParentOfSubscription: boolean): string {
+      if (order.meta_data && Array.isArray(order.meta_data)) {
+        for (const meta of order.meta_data) {
+          if (meta.key === '_subscription_renewal') return 'renewal';
+          if (meta.key === '_subscription_switch') return 'switch';
+          if (meta.key === '_subscription_resubscribe') return 'resubscribe';
+        }
+      }
+      // If this order is the parent of a subscription
+      if (isParentOfSubscription) return 'parent';
+      // If no subscription meta and not a parent, it's standalone
+      return order.parent_id === 0 ? 'standalone' : 'unknown';
+    }
+
     // Helper function to fetch orders from WooCommerce (OPTIMIZED)
     async function fetchOrdersFromWooCommerce(email: string) {
       const settings = await getWooCommerceSettings();
@@ -100,7 +138,6 @@ export async function GET(request: NextRequest) {
       const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
 
       // OPTIMIZED: Get customer by email first (server-side filtering)
-      // Use fallback method that also searches orders/subscriptions if customer not found directly
       console.log(`[Orders API] Looking up customer by email: ${email}`);
       const customer = await getCustomerByEmailCached(apiUrl, authHeaders, email);
 
@@ -109,10 +146,10 @@ export async function GET(request: NextRequest) {
 
       if (!customer) {
         console.log(`[Orders API] No customer found for email ${email}. Returning empty orders.`);
-        // Return empty result - no customer means no orders
         return {
           success: true,
           email: email,
+          customerId: null,
           count: 0,
           orders: [],
         };
@@ -148,9 +185,59 @@ export async function GET(request: NextRequest) {
 
       console.log(`[Orders API] Found ${ordersArray.length} orders for customer ID ${customerId}`);
 
-      // STEP 1: Collect all unique product_ids from all orders
+      // STEP 1: Fetch all customer subscriptions to build order->subscription mapping
+      // In WooCommerce Subscriptions, subscription.parent_id points to the parent order
+      const subscriptionsUrl = new URL(`${apiUrl}/subscriptions`);
+      subscriptionsUrl.searchParams.append('customer', customerId.toString());
+      subscriptionsUrl.searchParams.append('per_page', '100');
+
+      let subscriptionsArray: any[] = [];
+      try {
+        const subscriptionsResponse = await fetch(subscriptionsUrl.toString(), {
+          method: 'GET',
+          headers: authHeaders,
+        });
+
+        if (subscriptionsResponse.ok) {
+          const subContentType = subscriptionsResponse.headers.get('content-type');
+          if (subContentType && subContentType.includes('application/json')) {
+            const subs = await subscriptionsResponse.json();
+            subscriptionsArray = Array.isArray(subs) ? subs : [subs];
+          }
+        }
+      } catch (subError) {
+        console.log(`[Orders API] Could not fetch subscriptions: ${subError}`);
+      }
+
+      console.log(`[Orders API] Found ${subscriptionsArray.length} subscriptions for customer`);
+
+      // Build maps: 
+      // - orderIdToSubscriptionIds: order_id -> [subscription_ids] (subscriptions where this order is the parent)
+      // - subscriptionIdToParentOrderId: subscription_id -> parent_order_id
+      const orderIdToSubscriptionIds: Map<number, number[]> = new Map();
+      const subscriptionsMap: Map<number, any> = new Map();
+
+      subscriptionsArray.forEach((sub: any) => {
+        subscriptionsMap.set(sub.id, sub);
+        
+        // If subscription has a parent_id, that order is the parent order of this subscription
+        if (sub.parent_id && sub.parent_id > 0) {
+          if (!orderIdToSubscriptionIds.has(sub.parent_id)) {
+            orderIdToSubscriptionIds.set(sub.parent_id, []);
+          }
+          orderIdToSubscriptionIds.get(sub.parent_id)!.push(sub.id);
+        }
+      });
+
+      // STEP 2: Collect all unique product_ids from all orders
       const allProductIds: number[] = [];
+      const ordersById: Map<number, any> = new Map();
+
       ordersArray.forEach((order: any) => {
+        // Store order by ID for quick lookup
+        ordersById.set(order.id, order);
+        
+        // Collect product IDs
         if (order.line_items && Array.isArray(order.line_items)) {
           order.line_items.forEach((item: any) => {
             if (item.product_id) {
@@ -160,11 +247,10 @@ export async function GET(request: NextRequest) {
         }
       });
 
-      // STEP 2: Get unique product_ids (remove duplicates)
-      const uniqueProductIds = [...new Set(allProductIds)];
-
       // STEP 3: Fetch all unique products in parallel
+      const uniqueProductIds = [...new Set(allProductIds)];
       const productsMap = new Map<number, any>();
+
       await Promise.all(
         uniqueProductIds.map(async (productId) => {
           try {
@@ -187,12 +273,39 @@ export async function GET(request: NextRequest) {
         })
       );
 
-      // STEP 4: Transform orders to return required fields per API_PAYLOAD_REQUIREMENTS.md
-      // Required: id, number, status, date_created, total, line_items, meta_data (tracking + medication_schedule ACF fields)
+      // STEP 4: Build subscription-to-orders mapping for related_orders
+      // Fetch related orders from each subscription's orders endpoint
+      const subscriptionOrdersMap: Map<number, number[]> = new Map();
+      
+      // For each subscription, get its related orders
+      await Promise.all(
+        subscriptionsArray.map(async (sub: any) => {
+          try {
+            const subOrdersUrl = `${apiUrl}/subscriptions/${sub.id}/orders`;
+            const subOrdersResponse = await fetch(subOrdersUrl, {
+              method: 'GET',
+              headers: authHeaders,
+            });
+
+            if (subOrdersResponse.ok) {
+              const contentType = subOrdersResponse.headers.get('content-type');
+              if (contentType && contentType.includes('application/json')) {
+                const subOrders = await subOrdersResponse.json();
+                const orderIds = Array.isArray(subOrders) 
+                  ? subOrders.map((o: any) => o.id) 
+                  : [subOrders.id];
+                subscriptionOrdersMap.set(sub.id, orderIds);
+              }
+            }
+          } catch (err) {
+            // Continue without subscription orders
+          }
+        })
+      );
+
+      // STEP 5: Transform orders to return all required fields
       const enrichedOrders = ordersArray.map((order: any) => {
-        // Filter meta_data to include:
-        // 1. Tracking-related entries
-        // 2. Medication schedule ACF fields (without underscore prefix - these contain actual values)
+        // Filter meta_data to include tracking and medication_schedule ACF fields
         const relevantMetaData = (order.meta_data || []).filter((meta: any) => {
           const key = (meta.key || '');
           const keyLower = key.toLowerCase();
@@ -203,7 +316,6 @@ export async function GET(request: NextRequest) {
           }
           
           // Include medication_schedule ACF fields (without underscore prefix - these have actual values)
-          // Fields starting with underscore (_medication_schedule) are field references, not values
           if (key.startsWith('medication_schedule') && !key.startsWith('_')) {
             return true;
           }
@@ -211,7 +323,7 @@ export async function GET(request: NextRequest) {
           return false;
         });
 
-        // Transform line items to only include required fields
+        // Transform line items with all required fields
         const transformedLineItems = (order.line_items || []).map((item: any) => {
           let imageSrc = null;
 
@@ -224,21 +336,113 @@ export async function GET(request: NextRequest) {
           }
 
           return {
+            id: item.id,
             name: item.name || 'Unknown Product',
             quantity: item.quantity || 1,
-            price: item.price || item.subtotal || '0',
+            price: item.price || '0',
+            subtotal: item.subtotal || '0',
             total: item.total || '0',
+            sku: item.sku || '',
             image: { src: imageSrc },
           };
         });
 
-        // Return only required fields
+        // Get subscription IDs for this order from multiple sources:
+        // 1. From order meta_data (for renewal/switch orders)
+        // 2. From orderIdToSubscriptionIds map (for parent orders)
+        const metaSubscriptionIds = extractSubscriptionIdsFromMeta(order);
+        const parentSubscriptionIds = orderIdToSubscriptionIds.get(order.id) || [];
+        const orderSubscriptionIds = [...new Set([...metaSubscriptionIds, ...parentSubscriptionIds])];
+        
+        // Check if this order is a parent of any subscription
+        const isParentOfSubscription = parentSubscriptionIds.length > 0;
+
+        // Build related_orders - orders that share the same subscription
+        const relatedOrderIds: Set<number> = new Set();
+        orderSubscriptionIds.forEach(subId => {
+          const relatedIds = subscriptionOrdersMap.get(subId) || [];
+          relatedIds.forEach(id => {
+            if (id !== order.id) { // Exclude current order
+              relatedOrderIds.add(id);
+            }
+          });
+        });
+
+        const relatedOrders = [...relatedOrderIds].map(relatedOrderId => {
+          const relatedOrder = ordersById.get(relatedOrderId);
+          if (!relatedOrder) return null;
+          
+          // Check if related order is parent of any subscription
+          const relatedIsParent = (orderIdToSubscriptionIds.get(relatedOrderId) || []).length > 0;
+          
+          return {
+            id: relatedOrder.id,
+            number: relatedOrder.number || `ORD-${relatedOrder.id}`,
+            status: relatedOrder.status || 'unknown',
+            date_created: relatedOrder.date_created || relatedOrder.date_created_gmt || null,
+            total: relatedOrder.total || '0',
+            type: determineOrderType(relatedOrder, relatedIsParent),
+          };
+        }).filter(Boolean);
+
+        // Build related_subscriptions
+        const relatedSubscriptions = orderSubscriptionIds.map(subId => {
+          const subscription = subscriptionsMap.get(subId);
+          if (!subscription) {
+            return {
+              id: subId,
+              number: `SUB-${subId}`,
+              status: 'unknown',
+              total: '0',
+              billing_period: null,
+            };
+          }
+          
+          return {
+            id: subscription.id,
+            number: subscription.number || `SUB-${subscription.id}`,
+            status: subscription.status || 'unknown',
+            total: subscription.total || '0',
+            billing_period: subscription.billing_period || null,
+          };
+        });
+
+        // Return all required fields
         return {
           id: order.id,
           number: order.number || `ORD-${order.id}`,
           status: order.status || 'unknown',
           date_created: order.date_created || order.date_created_gmt || null,
           total: order.total || '0',
+          currency: order.currency || 'USD',
+          parent_id: order.parent_id || 0,
+          subscription_ids: orderSubscriptionIds,
+          related_orders: relatedOrders,
+          related_subscriptions: relatedSubscriptions,
+          billing: order.billing ? {
+            first_name: order.billing.first_name || '',
+            last_name: order.billing.last_name || '',
+            email: order.billing.email || '',
+            phone: order.billing.phone || '',
+            address_1: order.billing.address_1 || '',
+            address_2: order.billing.address_2 || '',
+            city: order.billing.city || '',
+            state: order.billing.state || '',
+            postcode: order.billing.postcode || '',
+            country: order.billing.country || '',
+          } : null,
+          shipping: order.shipping ? {
+            first_name: order.shipping.first_name || '',
+            last_name: order.shipping.last_name || '',
+            address_1: order.shipping.address_1 || '',
+            address_2: order.shipping.address_2 || '',
+            city: order.shipping.city || '',
+            state: order.shipping.state || '',
+            postcode: order.shipping.postcode || '',
+            country: order.shipping.country || '',
+          } : null,
+          payment_method: order.payment_method || null,
+          payment_method_title: order.payment_method_title || null,
           line_items: transformedLineItems,
           meta_data: relevantMetaData,
         };
@@ -247,6 +451,7 @@ export async function GET(request: NextRequest) {
       return {
         success: true,
         email: email,
+        customerId: customerId,
         count: enrichedOrders.length,
         orders: enrichedOrders,
       };
