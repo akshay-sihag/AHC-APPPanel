@@ -137,117 +137,6 @@ export async function getCustomerByEmail(
 }
 
 /**
- * Gets a WooCommerce customer by email with fallback methods
- * First tries direct customer lookup, then tries to find customer from orders/subscriptions
- *
- * @param apiUrl - Normalized WooCommerce API URL
- * @param authHeaders - Authentication headers for WooCommerce API
- * @param email - Customer email address
- * @returns Customer object if found, null otherwise
- */
-export async function getCustomerByEmailWithFallback(
-  apiUrl: string,
-  authHeaders: HeadersInit,
-  email: string
-): Promise<WooCommerceCustomer | null> {
-  // Try direct customer lookup first
-  let customer = await getCustomerByEmail(apiUrl, authHeaders, email);
-
-  if (customer) {
-    return customer;
-  }
-
-  // Fallback: Try to find customer ID from recent orders or subscriptions
-  console.log('[WooCommerce Helper] Trying fallback: searching orders and subscriptions for customer ID');
-
-  const normalizedEmail = email.toLowerCase().trim();
-  let customerId: number | null = null;
-
-  try {
-    // Make parallel requests to orders and subscriptions
-    const [ordersResponse, subscriptionsResponse] = await Promise.allSettled([
-      fetch(`${apiUrl}/orders?per_page=5`, { method: 'GET', headers: authHeaders }),
-      fetch(`${apiUrl}/subscriptions?per_page=5`, { method: 'GET', headers: authHeaders }),
-    ]);
-
-    // Try orders first
-    if (ordersResponse.status === 'fulfilled' && ordersResponse.value.ok) {
-      try {
-        const ordersContentType = ordersResponse.value.headers.get('content-type');
-        if (ordersContentType && ordersContentType.includes('application/json')) {
-          const orders = await ordersResponse.value.json();
-          const ordersArray = Array.isArray(orders) ? orders : [orders];
-
-          const matchingOrder = ordersArray.find((order: any) => {
-            const orderEmail = (
-              order.billing?.email?.toLowerCase().trim() ||
-              order.customer_email?.toLowerCase().trim() ||
-              ''
-            );
-            return orderEmail === normalizedEmail && order.customer_id;
-          });
-
-          if (matchingOrder?.customer_id) {
-            customerId = parseInt(matchingOrder.customer_id);
-          }
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-    }
-
-    // Try subscriptions if orders didn't find customer
-    if (!customerId && subscriptionsResponse.status === 'fulfilled' && subscriptionsResponse.value.ok) {
-      try {
-        const subsContentType = subscriptionsResponse.value.headers.get('content-type');
-        if (subsContentType && subsContentType.includes('application/json')) {
-          const subscriptions = await subscriptionsResponse.value.json();
-          const subsArray = Array.isArray(subscriptions) ? subscriptions : [subscriptions];
-
-          const matchingSub = subsArray.find((sub: any) => {
-            const subEmail = (
-              sub.billing?.email?.toLowerCase().trim() ||
-              sub.customer_email?.toLowerCase().trim() ||
-              ''
-            );
-            return subEmail === normalizedEmail && sub.customer_id;
-          });
-
-          if (matchingSub?.customer_id) {
-            customerId = parseInt(matchingSub.customer_id);
-          }
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-    }
-
-    // If we found customer ID via fallback, fetch full customer details
-    if (customerId) {
-      console.log(`[WooCommerce Helper] Found customer ID ${customerId} via fallback method`);
-
-      const customerByIdResponse = await fetch(`${apiUrl}/customers/${customerId}`, {
-        method: 'GET',
-        headers: authHeaders,
-      });
-
-      if (customerByIdResponse.ok) {
-        const customerContentType = customerByIdResponse.headers.get('content-type');
-        if (customerContentType && customerContentType.includes('application/json')) {
-          customer = await customerByIdResponse.json();
-          console.log(`[WooCommerce Helper] Successfully retrieved customer ${customerId} details`);
-          return customer;
-        }
-      }
-    }
-  } catch (error) {
-    console.error('[WooCommerce Helper] Error in fallback customer lookup:', error);
-  }
-
-  return null;
-}
-
-/**
  * Gets cached WooCommerce customer ID from the database
  * @param email - Customer email address
  * @returns Cached customer ID if found, null otherwise
@@ -301,8 +190,12 @@ async function cacheCustomerId(email: string, customerId: number): Promise<void>
 
 /**
  * Gets a WooCommerce customer by email with database caching
- * First checks if customer ID is cached in database, then falls back to API call
- * Caches the customer ID for future lookups
+ * 
+ * Flow:
+ * 1. Check if customer ID is cached in our database
+ * 2. If cached, fetch customer by ID from WooCommerce (fast)
+ * 3. If not cached, fetch customer by email from WooCommerce
+ * 4. Cache the customer ID for future lookups
  *
  * @param apiUrl - Normalized WooCommerce API URL
  * @param authHeaders - Authentication headers for WooCommerce API
@@ -338,6 +231,7 @@ export async function getCustomerByEmailCached(
         }
       } else if (customerByIdResponse.status === 404) {
         // Customer ID no longer valid in WooCommerce - clear the cache
+        // Note: This shouldn't happen since customer IDs don't change, but handle edge cases
         console.log(`[WooCommerce Helper] Cached customer ID ${cachedCustomerId} not found in WooCommerce, clearing cache`);
         await prisma.appUser.updateMany({
           where: { email: normalizedEmail },
@@ -349,69 +243,8 @@ export async function getCustomerByEmailCached(
     }
   }
 
-  // Step 2: Fall back to email lookup
+  // Step 2: Fall back to email lookup via WooCommerce API
   const customer = await getCustomerByEmail(apiUrl, authHeaders, normalizedEmail);
-
-  // Step 3: Cache the customer ID if found
-  if (customer?.id) {
-    await cacheCustomerId(normalizedEmail, customer.id);
-  }
-
-  return customer;
-}
-
-/**
- * Gets a WooCommerce customer by email with database caching and fallback methods
- * First checks database cache, then API, then fallback to orders/subscriptions
- * Caches the customer ID for future lookups
- *
- * @param apiUrl - Normalized WooCommerce API URL
- * @param authHeaders - Authentication headers for WooCommerce API
- * @param email - Customer email address
- * @returns Customer object if found, null otherwise
- */
-export async function getCustomerByEmailCachedWithFallback(
-  apiUrl: string,
-  authHeaders: HeadersInit,
-  email: string
-): Promise<WooCommerceCustomer | null> {
-  const normalizedEmail = email.toLowerCase().trim();
-
-  // Step 1: Check if customer ID is cached in database
-  const cachedCustomerId = await getCachedCustomerId(normalizedEmail);
-
-  if (cachedCustomerId) {
-    // Fetch customer by ID directly (faster than email search)
-    console.log(`[WooCommerce Helper] Using cached customer ID ${cachedCustomerId}`);
-
-    try {
-      const customerByIdResponse = await fetch(`${apiUrl}/customers/${cachedCustomerId}`, {
-        method: 'GET',
-        headers: authHeaders,
-      });
-
-      if (customerByIdResponse.ok) {
-        const contentType = customerByIdResponse.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const customer = await customerByIdResponse.json();
-          console.log(`[WooCommerce Helper] Retrieved customer ${cachedCustomerId} from cache`);
-          return customer;
-        }
-      } else if (customerByIdResponse.status === 404) {
-        // Customer ID no longer valid in WooCommerce - clear the cache
-        console.log(`[WooCommerce Helper] Cached customer ID ${cachedCustomerId} not found in WooCommerce, clearing cache`);
-        await prisma.appUser.updateMany({
-          where: { email: normalizedEmail },
-          data: { woocommerceCustomerId: null },
-        });
-      }
-    } catch (error) {
-      console.error('[WooCommerce Helper] Error fetching customer by cached ID:', error);
-    }
-  }
-
-  // Step 2: Fall back to email lookup with fallback methods
-  const customer = await getCustomerByEmailWithFallback(apiUrl, authHeaders, normalizedEmail);
 
   // Step 3: Cache the customer ID if found
   if (customer?.id) {

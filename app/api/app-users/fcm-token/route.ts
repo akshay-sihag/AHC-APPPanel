@@ -44,28 +44,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find or create user
+    // Normalize email
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Find user by wpUserId OR email (to prevent duplicates)
     let user = await prisma.appUser.findUnique({
       where: { wpUserId },
     });
 
+    // If not found by wpUserId, try to find by email
     if (!user) {
-      // Create new user if doesn't exist
+      user = await prisma.appUser.findFirst({
+        where: { email: normalizedEmail },
+      });
+    }
+
+    if (!user) {
+      // Create new user if doesn't exist by either wpUserId or email
       user = await prisma.appUser.create({
         data: {
           wpUserId,
-          email,
+          email: normalizedEmail,
           fcmToken,
         },
       });
     } else {
-      // Update FCM token
+      // Update FCM token and wpUserId if needed
       user = await prisma.appUser.update({
-        where: { wpUserId },
+        where: { id: user.id },
         data: {
           fcmToken,
-          // Update email if provided and different
-          email: email !== user.email ? email : user.email,
+          // Update wpUserId if it changed (user might have re-registered on WordPress)
+          wpUserId: wpUserId !== user.wpUserId ? wpUserId : user.wpUserId,
         },
       });
     }

@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
       const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
 
       // OPTIMIZED: Get customer by email first (server-side filtering)
+      // Use fallback method that also searches orders/subscriptions if customer not found directly
       console.log(`[Orders API] Looking up customer by email: ${email}`);
       const customer = await getCustomerByEmailCached(apiUrl, authHeaders, email);
 

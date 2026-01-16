@@ -59,12 +59,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find or get AppUser
+    // Normalize email for consistent lookups
+    const normalizedEmail = userEmail.toLowerCase().trim();
+
+    // Find or get AppUser - check by both wpUserId and email
     let appUser = await prisma.appUser.findFirst({
       where: {
         OR: [
           { wpUserId: userId.toString() },
-          { email: userEmail },
+          { email: normalizedEmail },
         ],
       },
     });
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
       appUser = await prisma.appUser.create({
         data: {
           wpUserId: userId.toString(),
-          email: userEmail,
+          email: normalizedEmail,
           name: userName || null,
           displayName: userName || null,
         },

@@ -118,7 +118,7 @@ model AppUser {
   
   // WordPress user data
   wpUserId       String   @unique // WordPress user ID
-  email          String
+  email          String   @unique // Email must be unique to prevent duplicate registrations
   name           String?
   displayName    String?
   

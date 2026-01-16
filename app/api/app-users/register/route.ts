@@ -77,45 +77,49 @@ export async function POST(request: NextRequest) {
     // Normalize email for comparison
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check if user already exists by email (to prevent duplicates)
-    const existingUserByEmail = await prisma.appUser.findFirst({
-      where: { email: normalizedEmail },
+    // Check if user already exists by email OR wpUserId
+    let existingUser = await prisma.appUser.findFirst({
+      where: {
+        OR: [
+          { email: normalizedEmail },
+          { wpUserId: String(wpUserId) },
+        ],
+      },
     });
 
-    if (existingUserByEmail) {
-      // User with this email already exists - reject registration
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'User with this email already exists',
-          message: 'Registration rejected. This email is already registered.',
-        },
-        { status: 409 }
-      );
-    }
-
-    // Check if user already exists by wpUserId
-    const existingUserByWpId = await prisma.appUser.findUnique({
-      where: { wpUserId: String(wpUserId) },
-    });
-
-    if (existingUserByWpId) {
-      // User already exists - return existing user data without registering again
-      // Optionally update login tracking fields (IP, login count, last login time, status)
+    if (existingUser) {
+      // User already exists - update their profile data and login tracking
+      // This allows users to update their weight/height/goal data on re-login
       const updatedUser = await prisma.appUser.update({
-        where: { wpUserId: String(wpUserId) },
+        where: { id: existingUser.id },
         data: {
+          // Update wpUserId if it changed (in case user re-registered on WordPress)
+          wpUserId: String(wpUserId),
+          // Update profile data (only if provided, keep existing otherwise)
+          name: name || displayName || existingUser.name,
+          displayName: displayName || name || existingUser.displayName,
+          phone: phone !== undefined ? phone : existingUser.phone,
+          age: age !== undefined ? age : existingUser.age,
+          height: height !== undefined ? height : existingUser.height,
+          feet: feet !== undefined ? feet : existingUser.feet,
+          // Update weight data (only if provided)
+          weight: weight !== undefined ? weight : existingUser.weight,
+          goal: goal !== undefined ? goal : existingUser.goal,
+          initialWeight: initialWeight !== undefined ? initialWeight : existingUser.initialWeight,
+          weightSet: weightSet !== undefined ? weightSet : existingUser.weightSet,
+          // Update login tracking
           lastLoginAt: new Date(),
           lastLoginIp: clientIp,
-          loginCount: existingUserByWpId.loginCount + 1,
+          loginCount: existingUser.loginCount + 1,
           status: 'Active',
         },
       });
 
       return NextResponse.json({
         success: true,
-        message: 'User already registered. Returning existing user data.',
+        message: 'User data updated successfully.',
         user: updatedUser,
+        isNewUser: false,
       });
     }
 
@@ -145,6 +149,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'User registered successfully',
       user: newUser,
+      isNewUser: true,
     }, { status: 201 });
   } catch (error) {
     console.error('Register app user error:', error);

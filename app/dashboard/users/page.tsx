@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import ConfirmModal from '@/app/components/ConfirmModal';
 
 type User = {
   id: string;
@@ -35,6 +36,9 @@ export default function UsersPage() {
   const [inactiveCount, setInactiveCount] = useState(0);
   const [avgTasksToday, setAvgTasksToday] = useState('0.0');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Debounce search term
   useEffect(() => {
@@ -109,6 +113,50 @@ export default function UsersPage() {
     router.push(`/dashboard/users/${user.id}`);
   };
 
+  const handleDeleteClick = (user: User) => {
+    setUserToDelete(user);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!userToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/app-users/${userToDelete.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to delete user (${response.status})`);
+      }
+
+      // Remove user from local state
+      setUsers(users.filter(u => u.id !== userToDelete.id));
+      setTotal(prev => prev - 1);
+      if (userToDelete.status === 'Active') {
+        setActiveCount(prev => prev - 1);
+      } else {
+        setInactiveCount(prev => prev - 1);
+      }
+
+      // Close modal
+      setDeleteModalOpen(false);
+      setUserToDelete(null);
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete user');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteModalOpen(false);
+    setUserToDelete(null);
+  };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
@@ -296,16 +344,29 @@ export default function UsersPage() {
                     {new Date(user.joinDate).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button
-                      onClick={() => handleViewUser(user)}
-                      className="text-[#7895b3] hover:text-[#435970] transition-colors"
-                      aria-label="View user"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.522 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.478 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleViewUser(user)}
+                        className="text-[#7895b3] hover:text-[#435970] transition-colors"
+                        aria-label="View user"
+                        title="View user details"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.522 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.478 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(user)}
+                        className="text-[#7895b3] hover:text-red-600 transition-colors"
+                        aria-label="Delete user"
+                        title="Delete user"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 ))
@@ -343,6 +404,18 @@ export default function UsersPage() {
         </div>
       </div>
 
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        title="Delete User"
+        message={`Are you sure you want to delete "${userToDelete?.name}" (${userToDelete?.email})? This will permanently delete all their data including weight logs and medication logs. This action cannot be undone.`}
+        confirmText="Delete User"
+        cancelText="Cancel"
+        type="danger"
+        isLoading={isDeleting}
+      />
     </div>
   );
 }
