@@ -685,7 +685,7 @@ export default function MedicinesPage() {
                     <td className="px-3 py-3">
                       <span className="text-sm font-medium text-[#435970]">
                         {medicine.price !== null && medicine.price !== undefined
-                          ? `$${parseFloat(medicine.price.toString()).toFixed(2)}${medicine.productType === 'subscription' ? '/month' : ''}`
+                          ? `$${Number(medicine.price).toString()}${medicine.productType === 'subscription' ? '/month' : ''}`
                           : '-'}
                       </span>
                     </td>
