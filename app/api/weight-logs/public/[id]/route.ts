@@ -94,13 +94,42 @@ export async function DELETE(
     }
 
     // Delete the weight log
-    await prisma.weightLog.delete({
+    console.log(`Attempting to delete weight log with ID: ${id}`);
+
+    const deletedLog = await prisma.weightLog.delete({
       where: { id },
     });
+
+    console.log(`Successfully deleted weight log:`, {
+      id: deletedLog.id,
+      userId: deletedLog.userId,
+      userEmail: deletedLog.userEmail,
+      weight: deletedLog.weight,
+      date: deletedLog.date,
+    });
+
+    // Verify the deletion by attempting to find the record
+    const verifyDeleted = await prisma.weightLog.findUnique({
+      where: { id },
+    });
+
+    if (verifyDeleted) {
+      console.error(`WARNING: Record ${id} still exists after delete!`);
+    } else {
+      console.log(`Verified: Record ${id} successfully deleted from database`);
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Weight log deleted successfully',
+      deletedLog: {
+        id: deletedLog.id,
+        userId: deletedLog.userId,
+        userEmail: deletedLog.userEmail,
+        weight: deletedLog.weight,
+        date: deletedLog.date.toISOString(),
+      },
+      verified: verifyDeleted === null,
     });
   } catch (error) {
     console.error('Delete weight log error:', error);

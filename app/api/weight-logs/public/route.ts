@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateApiKey } from '@/lib/middleware';
 
+// Force dynamic rendering and disable caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * Public Weight Log API Endpoint for Mobile App
  * 
@@ -301,6 +305,9 @@ export async function GET(request: NextRequest) {
       where.date = { ...where.date, lt: endDateObj };
     }
 
+    // Log the query for debugging
+    console.log('Fetching weight logs with query:', JSON.stringify(where, null, 2));
+
     // Get weight logs with pagination and relation
     const [logs, total] = await Promise.all([
       prisma.weightLog.findMany({
@@ -322,6 +329,8 @@ export async function GET(request: NextRequest) {
       }),
       prisma.weightLog.count({ where }),
     ]);
+
+    console.log(`Found ${total} weight logs, returning ${logs.length} logs`);
 
     return NextResponse.json({
       success: true,
@@ -352,6 +361,12 @@ export async function GET(request: NextRequest) {
         totalPages: Math.ceil(total / limit),
         hasNextPage: page < Math.ceil(total / limit),
         hasPreviousPage: page > 1,
+      },
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
     });
   } catch (error) {
