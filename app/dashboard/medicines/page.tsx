@@ -29,6 +29,7 @@ type Medicine = {
   image: string | null;
   url: string | null;
   price: number | null;
+  productType: string;
   status: string;
 };
 
@@ -112,7 +113,8 @@ export default function MedicinesPage() {
     description: '',
     image: '',
     url: '',
-    price: ''
+    price: '',
+    productType: 'simple'
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -134,7 +136,8 @@ export default function MedicinesPage() {
       description: '',
       image: '',
       url: '',
-      price: ''
+      price: '',
+      productType: 'simple'
     });
     setImagePreview(null);
     setImageFile(null);
@@ -151,7 +154,8 @@ export default function MedicinesPage() {
       description: medicine.description || '',
       image: existingImage,
       url: medicine.url || '',
-      price: medicine.price?.toString() || ''
+      price: medicine.price?.toString() || '',
+      productType: medicine.productType || 'simple'
     });
     setImagePreview(existingImage || null);
     setIsModalOpen(true);
@@ -355,6 +359,7 @@ export default function MedicinesPage() {
           image: imageUrl || null,
           url: formData.url.trim() || null,
           price: formData.price.trim() || null,
+          productType: formData.productType,
         }),
       });
 
@@ -386,7 +391,8 @@ export default function MedicinesPage() {
         description: '',
         image: '',
         url: '',
-        price: ''
+        price: '',
+        productType: 'simple'
       });
       setImagePreview(null);
       setImageFile(null);
@@ -421,7 +427,8 @@ export default function MedicinesPage() {
       description: '',
       image: '',
       url: '',
-      price: ''
+      price: '',
+      productType: 'simple'
     });
   };
 
@@ -677,8 +684,8 @@ export default function MedicinesPage() {
                     </td>
                     <td className="px-3 py-3">
                       <span className="text-sm font-medium text-[#435970]">
-                        {medicine.price !== null && medicine.price !== undefined 
-                          ? `$${parseFloat(medicine.price.toString()).toFixed(2)}`
+                        {medicine.price !== null && medicine.price !== undefined
+                          ? `$${parseFloat(medicine.price.toString()).toFixed(2)}${medicine.productType === 'subscription' ? '/month' : ''}`
                           : '-'}
                       </span>
                     </td>
@@ -898,21 +905,40 @@ export default function MedicinesPage() {
                 />
               </div>
 
-              {/* Price */}
-              <div>
-                <label htmlFor="price" className="block text-sm font-medium text-[#435970] mb-2">
-                  Price (USD)
-                </label>
-                <input
-                  type="number"
-                  id="price"
-                  step="0.01"
-                  min="0"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
-                  placeholder="0.00"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Price */}
+                <div>
+                  <label htmlFor="price" className="block text-sm font-medium text-[#435970] mb-2">
+                    Price (USD)
+                  </label>
+                  <input
+                    type="number"
+                    id="price"
+                    step="0.01"
+                    min="0"
+                    value={formData.price}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                {/* Product Type */}
+                <div>
+                  <label htmlFor="productType" className="block text-sm font-medium text-[#435970] mb-2">
+                    Product Type *
+                  </label>
+                  <select
+                    id="productType"
+                    required
+                    value={formData.productType}
+                    onChange={(e) => setFormData({ ...formData, productType: e.target.value })}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] bg-white"
+                  >
+                    <option value="simple">Simple Product</option>
+                    <option value="subscription">Subscription Product</option>
+                  </select>
+                </div>
               </div>
 
               {/* Form Actions */}

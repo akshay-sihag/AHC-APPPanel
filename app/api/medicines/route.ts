@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
         image: medicine.image,
         url: medicine.url,
         price: medicine.price,
+        productType: medicine.productType,
         status: medicine.status,
         createdAt: medicine.createdAt.toISOString(),
         updatedAt: medicine.updatedAt.toISOString(),
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { categoryId, title, tagline, description, image, url, price, status } = body;
+    const { categoryId, title, tagline, description, image, url, price, productType, status } = body;
 
     // Validate required fields
     if (!categoryId || !title) {
@@ -167,6 +168,7 @@ export async function POST(request: NextRequest) {
         image: image?.trim() || null,
         url: url?.trim() || null,
         price: priceValue,
+        productType: productType || 'simple',
         status: status || 'active',
       },
       include: {
@@ -197,6 +199,7 @@ export async function POST(request: NextRequest) {
         image: medicine.image,
         url: medicine.url,
         price: medicine.price,
+        productType: medicine.productType,
         status: medicine.status,
         createdAt: medicine.createdAt.toISOString(),
         updatedAt: medicine.updatedAt.toISOString(),

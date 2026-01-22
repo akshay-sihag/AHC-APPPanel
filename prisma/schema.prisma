@@ -210,11 +210,12 @@ model Medicine {
   image       String?
   url         String?
   price       Float?   // Price in USD
+  productType String   @default("simple") // simple, subscription
   status      String   @default("active") // active, inactive
-  
+
   // Relations
   category MedicineCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  
+
   // Timestamps
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

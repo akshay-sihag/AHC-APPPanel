@@ -56,6 +56,7 @@ export async function GET(
         image: medicine.image,
         url: medicine.url,
         price: medicine.price,
+        productType: medicine.productType,
         status: medicine.status,
         createdAt: medicine.createdAt.toISOString(),
         updatedAt: medicine.updatedAt.toISOString(),
@@ -89,7 +90,7 @@ export async function PUT(
     const resolvedParams = params instanceof Promise ? await params : params;
 
     const body = await request.json();
-    const { categoryId, title, tagline, description, image, url, price, status } = body;
+    const { categoryId, title, tagline, description, image, url, price, productType, status } = body;
 
     // Check if medicine exists
     const existingMedicine = await prisma.medicine.findUnique({
@@ -167,6 +168,9 @@ export async function PUT(
         updateData.price = priceValue;
       }
     }
+    if (productType !== undefined) {
+      updateData.productType = productType || 'simple';
+    }
     if (status !== undefined) {
       updateData.status = status;
     }
@@ -203,6 +207,7 @@ export async function PUT(
         image: medicine.image,
         url: medicine.url,
         price: medicine.price,
+        productType: medicine.productType,
         status: medicine.status,
         createdAt: medicine.createdAt.toISOString(),
         updatedAt: medicine.updatedAt.toISOString(),
