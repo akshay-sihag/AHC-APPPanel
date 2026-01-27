@@ -1,10 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import {
   sendPushNotificationToUser,
   getSubscriptionStatusIcon,
   getSubscriptionStatusMessage,
 } from '@/lib/fcm-service';
+
+/**
+ * Verify WooCommerce webhook signature
+ */
+function verifyWebhookSignature(body: string, signature: string | null, secret: string): boolean {
+  if (!signature || !secret) {
+    return false;
+  }
+
+  try {
+    const expectedSignature = createHmac('sha256', secret)
+      .update(body, 'utf8')
+      .digest('base64');
+
+    return signature === expectedSignature;
+  } catch (error) {
+    console.error('Signature verification error:', error);
+    return false;
+  }
+}
 
 /**
  * WooCommerce Webhook for Subscription Status Updates
@@ -22,7 +43,20 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
     const webhookTopic = request.headers.get('x-wc-webhook-topic');
     const webhookSource = request.headers.get('x-wc-webhook-source');
-    console.log('Headers:', { contentType, webhookTopic, webhookSource });
+    const webhookSignature = request.headers.get('x-wc-webhook-signature');
+    console.log('Headers:', { contentType, webhookTopic, webhookSource, hasSignature: !!webhookSignature });
+
+    // Verify webhook signature if secret is configured
+    const webhookSecret = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
+    if (webhookSecret && text && text.trim() && text.startsWith('{')) {
+      const isValid = verifyWebhookSignature(text, webhookSignature, webhookSecret);
+      console.log('Webhook signature verification:', isValid ? 'VALID' : 'INVALID');
+
+      if (!isValid && webhookSignature) {
+        // Log but don't block - helps debug signature issues
+        console.warn('Webhook signature mismatch - check WOOCOMMERCE_WEBHOOK_SECRET');
+      }
+    }
 
     // Handle empty body
     if (!text || !text.trim()) {
