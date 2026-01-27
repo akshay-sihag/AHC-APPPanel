@@ -12,6 +12,7 @@ type User = {
   status: string;
   lastLogin: string;
   weight: string;
+  initialWeight: string;
   goal: string;
   tasksToday: number;
   joinDate: string;
@@ -43,6 +44,18 @@ type MedicationWeek = {
   logs: MedicationLog[];
 };
 
+type WeightLog = {
+  id: string;
+  userId: string;
+  userName: string | null;
+  userEmail: string;
+  date: string;
+  weight: number;
+  previousWeight: number | null;
+  change: number | null;
+  changeType: 'increase' | 'decrease' | 'no-change' | null;
+};
+
 export default function UserDetailsPage() {
   useRouter();
   const params = useParams();
@@ -50,10 +63,17 @@ export default function UserDetailsPage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [medicationLogs, setMedicationLogs] = useState<MedicationWeek[]>([]);
+  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMedicationLogs, setLoadingMedicationLogs] = useState(false);
+  const [loadingWeightLogs, setLoadingWeightLogs] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [weightUnit] = useState('lbs');
+  const [weightLogsPagination, setWeightLogsPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+  });
 
   useEffect(() => {
     const fetchUserDetails = async () => {
@@ -112,6 +132,46 @@ export default function UserDetailsPage() {
       fetchUserDetails();
     }
   }, [userId]);
+
+  // Fetch weight logs for this user
+  useEffect(() => {
+    const fetchWeightLogs = async () => {
+      if (!user) return;
+
+      try {
+        setLoadingWeightLogs(true);
+        const params = new URLSearchParams({
+          page: weightLogsPagination.page.toString(),
+          limit: weightLogsPagination.limit.toString(),
+          search: user.email, // Filter by user email
+        });
+
+        const response = await fetch(`/api/weight-logs?${params.toString()}`, {
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch weight logs');
+        }
+
+        const data = await response.json();
+        setWeightLogs(data.logs || []);
+        setWeightLogsPagination(data.pagination);
+      } catch (error) {
+        console.error('Error fetching weight logs:', error);
+      } finally {
+        setLoadingWeightLogs(false);
+      }
+    };
+
+    fetchWeightLogs();
+  }, [user, weightLogsPagination.page, weightLogsPagination.limit]);
+
+  const handleWeightLogsPageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= weightLogsPagination.totalPages) {
+      setWeightLogsPagination({ ...weightLogsPagination, page: newPage });
+    }
+  };
 
   if (loading) {
     return (
@@ -207,15 +267,6 @@ export default function UserDetailsPage() {
                   <p className="text-base font-medium text-[#435970]">{user.age} years</p>
                 </div>
               )}
-              {(user.height || user.feet) && (
-                <div>
-                  <p className="text-sm text-[#7895b3] mb-1">Height</p>
-                  <p className="text-base font-medium text-[#435970]">
-                    {user.feet ? user.feet : user.height || 'N/A'}
-                    {user.feet && user.height && ` (${user.height})`}
-                  </p>
-                </div>
-              )}
               <div>
                 <p className="text-sm text-[#7895b3] mb-1">Join Date</p>
                 <p className="text-base font-medium text-[#435970]">
@@ -241,38 +292,32 @@ export default function UserDetailsPage() {
           <div className="space-y-4">
             <h5 className="text-xl font-semibold text-[#435970] mb-4">Fitness Information</h5>
             <div className="space-y-4">
+              {(user.height || user.feet) && (
+                <div>
+                  <p className="text-sm text-[#7895b3] mb-1">Height</p>
+                  <p className="text-base font-medium text-[#435970]">
+                    {user.feet || user.height || 'N/A'}
+                  </p>
+                </div>
+              )}
+              <div>
+                <p className="text-sm text-[#7895b3] mb-1">Starting Weight</p>
+                <p className="text-base font-medium text-[#435970]">
+                  {formatWeight(user.initialWeight)}
+                </p>
+              </div>
               <div>
                 <p className="text-sm text-[#7895b3] mb-1">Current Weight</p>
                 <p className="text-base font-medium text-[#435970]">
-                  {formatWeight(user.weight, weightUnit)}
+                  {formatWeight(user.weight)}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-[#7895b3] mb-1">Goal Weight</p>
                 <p className="text-base font-medium text-[#435970]">
-                  {formatWeight(user.goal, weightUnit)}
+                  {formatWeight(user.goal)}
                 </p>
               </div>
-              {user.totalWorkouts !== undefined && (
-                <div>
-                  <p className="text-sm text-[#7895b3] mb-1">Total Workouts</p>
-                  <p className="text-base font-medium text-[#435970]">{user.totalWorkouts}</p>
-                </div>
-              )}
-              {user.totalCalories !== undefined && (
-                <div>
-                  <p className="text-sm text-[#7895b3] mb-1">Total Calories Burned</p>
-                  <p className="text-base font-medium text-[#435970]">
-                    {user.totalCalories.toLocaleString()}
-                  </p>
-                </div>
-              )}
-              {user.streak !== undefined && (
-                <div>
-                  <p className="text-sm text-[#7895b3] mb-1">Current Streak</p>
-                  <p className="text-base font-medium text-[#435970]">{user.streak} days</p>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -334,16 +379,10 @@ export default function UserDetailsPage() {
               <span className="text-sm text-[#7895b3]">Weight Progress</span>
               <span className="text-sm font-medium text-[#435970]">
                 {user.weight !== 'N/A' && user.goal !== 'N/A'
-                  ? `${formatWeight(user.weight, weightUnit)} / ${formatWeight(user.goal, weightUnit)}`
+                  ? `${formatWeight(user.weight)} / ${formatWeight(user.goal)}`
                   : 'N/A'}
               </span>
             </div>
-            {user.streak !== undefined && (
-              <div className="flex justify-between items-center pb-3 border-b border-[#dfedfb]">
-                <span className="text-sm text-[#7895b3]">Current Streak</span>
-                <span className="text-sm font-medium text-[#435970]">{user.streak} days</span>
-              </div>
-            )}
             <div className="flex justify-between items-center">
               <span className="text-sm text-[#7895b3]">Member Since</span>
               <span className="text-sm font-medium text-[#435970]">
@@ -430,6 +469,137 @@ export default function UserDetailsPage() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Weight Log Data Section */}
+      <div className="bg-white rounded-lg border border-[#dfedfb] p-6">
+        <h5 className="text-xl font-semibold text-[#435970] mb-6">Weight Log Data</h5>
+        {loadingWeightLogs ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-[#435970]"></div>
+            <p className="ml-3 text-[#7895b3]">Loading weight logs...</p>
+          </div>
+        ) : weightLogs.length === 0 ? (
+          <p className="text-sm text-[#7895b3] text-center py-8">
+            No weight logs found. Weight logs will appear here when the user submits data from the app.
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-[#dfedfb]">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Weight (lbs)
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Previous Weight
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Change
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#dfedfb]">
+                  {weightLogs
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map((log) => (
+                      <tr key={log.id} className="hover:bg-[#dfedfb]/20 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#435970]">
+                          {new Date(log.date).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="text-sm font-semibold text-[#435970]">{log.weight} lbs</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#7895b3]">
+                          {log.previousWeight ? `${log.previousWeight} lbs` : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {log.change !== null && log.change !== 0 ? (
+                            <div className="flex items-center gap-2">
+                              {log.changeType === 'decrease' ? (
+                                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                </svg>
+                              ) : (
+                                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7 7V3" />
+                                </svg>
+                              )}
+                              <span className={`text-sm font-semibold ${
+                                log.changeType === 'decrease' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {log.changeType === 'decrease' ? '-' : '+'}{Math.abs(log.change)} lbs
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-[#7895b3]">No change</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {log.changeType ? (
+                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                              log.changeType === 'decrease'
+                                ? 'bg-green-100 text-green-700'
+                                : log.changeType === 'increase'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-[#dfedfb] text-[#7895b3]'
+                            }`}>
+                              {log.changeType === 'decrease' ? 'Decreased' : log.changeType === 'increase' ? 'Increased' : 'No Change'}
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-[#dfedfb] text-[#7895b3]">
+                              N/A
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {weightLogs.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-[#dfedfb] flex items-center justify-between">
+                <div className="text-sm text-[#7895b3]">
+                  Showing <span className="font-semibold text-[#435970]">
+                    {((weightLogsPagination.page - 1) * weightLogsPagination.limit) + 1}
+                  </span> to{' '}
+                  <span className="font-semibold text-[#435970]">
+                    {Math.min(weightLogsPagination.page * weightLogsPagination.limit, weightLogsPagination.total)}
+                  </span> of{' '}
+                  <span className="font-semibold text-[#435970]">{weightLogsPagination.total}</span> logs
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleWeightLogsPageChange(weightLogsPagination.page - 1)}
+                    disabled={weightLogsPagination.page === 1}
+                    className="px-3 py-1 text-sm border border-[#dfedfb] rounded-lg text-[#435970] hover:bg-[#dfedfb] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-[#7895b3]">
+                    Page {weightLogsPagination.page} of {weightLogsPagination.totalPages}
+                  </span>
+                  <button
+                    onClick={() => handleWeightLogsPageChange(weightLogsPagination.page + 1)}
+                    disabled={weightLogsPagination.page >= weightLogsPagination.totalPages}
+                    className="px-3 py-1 text-sm border border-[#dfedfb] rounded-lg text-[#435970] hover:bg-[#dfedfb] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

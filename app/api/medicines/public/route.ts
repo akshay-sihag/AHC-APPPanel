@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
           image: getImageUrl(medicine.image, requestUrl, true), // Force absolute URL for mobile
           url: medicine.url,
           price: medicine.price,
+          productType: medicine.productType,
           createdAt: medicine.createdAt.toISOString(),
           updatedAt: medicine.updatedAt.toISOString(),
         },
@@ -136,7 +137,7 @@ export async function GET(request: NextRequest) {
             }
           }
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'asc' },
         skip,
         take: limit,
       }),
@@ -163,6 +164,7 @@ export async function GET(request: NextRequest) {
         image: getImageUrl(medicine.image, requestUrl, true), // Force absolute URL for mobile
         url: medicine.url,
         price: medicine.price,
+        productType: medicine.productType,
         createdAt: medicine.createdAt.toISOString(),
         updatedAt: medicine.updatedAt.toISOString(),
       })),
