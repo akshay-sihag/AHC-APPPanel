@@ -889,9 +889,16 @@ export async function sendPushNotificationToAll(
       },
     });
 
-    const fcmTokens = users
+    const allTokens = users
       .map((u) => u.fcmToken)
       .filter((token): token is string => token !== null);
+
+    // CRITICAL: Remove duplicate tokens to prevent multiple notifications to same device
+    const fcmTokens = [...new Set(allTokens)];
+
+    if (allTokens.length !== fcmTokens.length) {
+      console.warn(`Removed ${allTokens.length - fcmTokens.length} duplicate FCM token(s) from send list`);
+    }
 
     if (fcmTokens.length === 0) {
       console.warn('No active users with FCM tokens found');
@@ -903,7 +910,7 @@ export async function sendPushNotificationToAll(
       };
     }
 
-    console.log(`Sending push notification to ${fcmTokens.length} users`);
+    console.log(`Sending push notification to ${fcmTokens.length} unique users (${allTokens.length} total records)`);
     const result = await sendPushNotificationToMultiple(fcmTokens, title, body, imageUrl, data, logOptions);
 
     return {

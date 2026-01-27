@@ -47,6 +47,30 @@ export async function POST(request: NextRequest) {
     // Normalize email
     const normalizedEmail = email.toLowerCase().trim();
 
+    // CRITICAL: Clear this FCM token from ALL other users first
+    // This prevents duplicate notifications when:
+    // - User reinstalls app
+    // - User logs into different account on same device
+    // - Token gets recycled by Firebase
+    const clearedCount = await prisma.appUser.updateMany({
+      where: {
+        fcmToken: fcmToken,
+        NOT: {
+          OR: [
+            { wpUserId: wpUserId },
+            { email: normalizedEmail },
+          ],
+        },
+      },
+      data: {
+        fcmToken: null,
+      },
+    });
+
+    if (clearedCount.count > 0) {
+      console.log(`Cleared FCM token from ${clearedCount.count} other user(s) to prevent duplicates`);
+    }
+
     // Find user by wpUserId OR email (to prevent duplicates)
     let user = await prisma.appUser.findUnique({
       where: { wpUserId },
