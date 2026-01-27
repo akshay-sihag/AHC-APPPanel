@@ -42,19 +42,21 @@ export async function POST(request: NextRequest) {
     console.log('Sending direct push to:', user.email);
     console.log('FCM Token:', user.fcmToken.substring(0, 50) + '...');
 
-    // Send push directly using the token
+    // Send push directly using the token - use same data format as actual webhooks for Flutter compatibility
     const result = await sendPushNotification(
       user.fcmToken,
       title,
       message,
       undefined,
       {
-        type: 'order_status',
+        type: 'notification',  // Same as CRUD/webhook notifications
+        notificationType: 'order_status',
         icon: 'ic_order_completed',
         orderId: '99999',
         orderStatus: 'completed',
         url: '/orders/99999',
-      }
+      },
+      { source: 'webhook', type: 'order', sourceId: '99999', recipientEmail: user.email, recipientWpUserId: user.wpUserId }
     );
 
     console.log('Push result:', result);

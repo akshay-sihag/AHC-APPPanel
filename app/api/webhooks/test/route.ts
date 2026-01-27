@@ -85,19 +85,23 @@ export async function POST(request: NextRequest) {
 
     console.log('Test push notification:', { email, title, message, icon });
 
-    // Send push notification
+    // Send push notification - use same data format as actual webhooks for Flutter compatibility
     const pushResult = await sendPushNotificationToUser(
       email,
       title,
       message,
       undefined,
       {
-        type: type === 'subscription' ? 'subscription_status' : 'order_status',
+        type: 'notification',  // Same as CRUD/webhook notifications
+        notificationType: type === 'subscription' ? 'subscription_status' : 'order_status',
         icon,
-        orderId: resourceId,
-        orderStatus: status,
+        ...(type === 'subscription'
+          ? { subscriptionId: resourceId, subscriptionStatus: status }
+          : { orderId: resourceId, orderStatus: status }
+        ),
         url: `/${type}s/${resourceId}`,
-      }
+      },
+      { source: 'webhook', type: type === 'subscription' ? 'subscription' : 'order', sourceId: resourceId }
     );
 
     return NextResponse.json({

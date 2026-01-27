@@ -40,6 +40,30 @@ export async function POST(
       );
     }
 
+    // Deduplication: Check if we've already sent a push for this notification recently (within 1 minute)
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const existingPushLog = await prisma.pushNotificationLog.findFirst({
+      where: {
+        source: 'admin',
+        sourceId: notification.id,
+        createdAt: { gte: oneMinuteAgo },
+      },
+    });
+
+    if (existingPushLog) {
+      console.log('Duplicate push detected for notification:', notification.id);
+      return NextResponse.json({
+        success: true,
+        message: 'Push notification was already sent recently',
+        pushNotification: {
+          sent: true,
+          duplicate: true,
+          successCount: existingPushLog.successCount || 0,
+          failureCount: existingPushLog.failureCount || 0,
+        },
+      });
+    }
+
     // Send push notification
     // Check if image is already a full URL (e.g., from Cloudinary) or a relative path
     const imageUrl = notification.image 
@@ -63,7 +87,8 @@ export async function POST(
       notification.title,
       notification.description,
       imageUrl,
-      fcmData
+      fcmData,
+      { source: 'admin', type: 'general', sourceId: notification.id }
     );
 
     // Update receiver count if push was successful

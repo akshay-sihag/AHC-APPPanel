@@ -65,6 +65,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Not an order event' });
     }
 
+    // Deduplication: Check if we've already processed this exact order+status recently (within 5 minutes)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const existingLog = await prisma.webhookLog.findFirst({
+      where: {
+        source: 'woocommerce',
+        event: 'order_status',
+        resourceId: String(orderId),
+        status: orderStatus,
+        createdAt: { gte: fiveMinutesAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingLog) {
+      console.log('Duplicate webhook detected - skipping notification', {
+        orderId,
+        orderStatus,
+        previousLogId: existingLog.id,
+        previousLogTime: existingLog.createdAt,
+      });
+      return NextResponse.json({
+        success: true,
+        message: 'Duplicate webhook - notification already sent',
+        orderId,
+        orderStatus,
+        duplicate: true,
+      });
+    }
+
     // Get notification content
     const { title, body: message } = getOrderStatusMessage(orderStatus, String(orderNumber));
     const icon = getOrderStatusIcon(orderStatus);

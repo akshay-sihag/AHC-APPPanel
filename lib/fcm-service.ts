@@ -175,123 +175,98 @@ export async function initializeFCM(): Promise<boolean> {
 
     // Initialize Firebase Admin if not already initialized
     if (!admin.apps.length) {
-      // Try to get service account from environment variable
-      const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-      const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      let initialized = false;
 
-      if (serviceAccountJson) {
+      // Method 1: Try local key file FIRST (most reliable)
+      const localKeyPaths = [
+        path.join(process.cwd(), 'key', 'key-1.json'),
+        path.join(process.cwd(), 'key', 'firebase-key.json'),
+        path.join(process.cwd(), 'key', 'service-account.json'),
+      ];
+
+      for (const keyPath of localKeyPaths) {
+        if (initialized) break;
         try {
-          // Check if JSON string is empty or just whitespace
-          if (!serviceAccountJson.trim()) {
-            console.error('FIREBASE_SERVICE_ACCOUNT is set but appears to be empty');
-            return false;
-          }
+          if (fs.existsSync(keyPath)) {
+            console.log(`Found service account file at: ${keyPath}`);
+            const fileContent = fs.readFileSync(keyPath, 'utf8');
+            const serviceAccount = JSON.parse(fileContent);
 
-          const serviceAccount = JSON.parse(serviceAccountJson);
-          
-          // Validate required fields
-          const missingFields = [];
-          if (!serviceAccount.project_id) missingFields.push('project_id');
-          if (!serviceAccount.private_key) missingFields.push('private_key');
-          if (!serviceAccount.client_email) missingFields.push('client_email');
-          
-          if (missingFields.length > 0) {
-            console.error(`FIREBASE_SERVICE_ACCOUNT JSON is missing required fields: ${missingFields.join(', ')}`);
-            console.error('Service account JSON should contain: project_id, private_key, client_email, and other fields');
-            return false;
-          }
-
-          // Check if project ID matches (if database setting exists)
-          const projectId = dbProjectId || serviceAccount.project_id;
-          if (dbProjectId && serviceAccount.project_id !== dbProjectId) {
-            console.warn(`Service account project_id (${serviceAccount.project_id}) does not match database fcmProjectId (${dbProjectId})`);
-            console.warn('Using project_id from service account JSON instead');
-          }
-
-          firebaseApp = admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            projectId: serviceAccount.project_id,
-          });
-          console.log('FCM initialized successfully using FIREBASE_SERVICE_ACCOUNT');
-          console.log(`Project ID: ${serviceAccount.project_id}, Client Email: ${serviceAccount.client_email}`);
-        } catch (error: any) {
-          console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT JSON:', error.message);
-          console.error('Make sure the JSON is valid and properly formatted');
-          if (error.message.includes('JSON')) {
-            console.error('Tip: If using .env file, make sure the JSON is on one line or properly escaped');
-          }
-          return false;
-        }
-      } else if (credentialsPath) {
-        try {
-          if (!dbProjectId) {
-            console.error('FCM project ID must be configured in database settings when using GOOGLE_APPLICATION_CREDENTIALS');
-            return false;
-          }
-          firebaseApp = admin.initializeApp({
-            credential: admin.credential.applicationDefault(),
-            projectId: dbProjectId,
-          });
-          console.log('FCM initialized successfully using GOOGLE_APPLICATION_CREDENTIALS');
-        } catch (error: any) {
-          console.error('Failed to initialize FCM with GOOGLE_APPLICATION_CREDENTIALS:', error.message);
-          return false;
-        }
-      } else {
-        // Try to load from local file /key/key-1.json as fallback
-        const localKeyPaths = [
-          path.join(process.cwd(), 'key', 'key-1.json'),
-          path.join(process.cwd(), 'key', 'firebase-key.json'),
-          path.join(process.cwd(), 'key', 'service-account.json'),
-        ];
-
-        let serviceAccount = null;
-        let loadedFromPath = '';
-
-        for (const keyPath of localKeyPaths) {
-          try {
-            if (fs.existsSync(keyPath)) {
-              const fileContent = fs.readFileSync(keyPath, 'utf8');
-              serviceAccount = JSON.parse(fileContent);
-              loadedFromPath = keyPath;
-              console.log(`Found service account file at: ${keyPath}`);
-              break;
-            }
-          } catch (e) {
-            console.warn(`Failed to read service account from ${keyPath}:`, e);
-          }
-        }
-
-        if (serviceAccount) {
-          try {
             // Validate required fields
-            const missingFields = [];
-            if (!serviceAccount.project_id) missingFields.push('project_id');
-            if (!serviceAccount.private_key) missingFields.push('private_key');
-            if (!serviceAccount.client_email) missingFields.push('client_email');
-
-            if (missingFields.length > 0) {
-              console.error(`Service account file is missing required fields: ${missingFields.join(', ')}`);
-              return false;
+            if (serviceAccount.project_id && serviceAccount.private_key && serviceAccount.client_email) {
+              firebaseApp = admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                projectId: serviceAccount.project_id,
+              });
+              console.log(`FCM initialized successfully using local file: ${keyPath}`);
+              console.log(`Project ID: ${serviceAccount.project_id}, Client Email: ${serviceAccount.client_email}`);
+              initialized = true;
+            } else {
+              console.warn(`Service account file ${keyPath} missing required fields, trying next method...`);
             }
-
-            firebaseApp = admin.initializeApp({
-              credential: admin.credential.cert(serviceAccount),
-              projectId: serviceAccount.project_id,
-            });
-            console.log(`FCM initialized successfully using local file: ${loadedFromPath}`);
-            console.log(`Project ID: ${serviceAccount.project_id}, Client Email: ${serviceAccount.client_email}`);
-          } catch (error: any) {
-            console.error('Failed to initialize FCM with local service account file:', error.message);
-            return false;
           }
-        } else {
-          console.error('Firebase service account not configured. Options:');
-          console.error('1. Set FIREBASE_SERVICE_ACCOUNT env variable (JSON string)');
-          console.error('2. Set GOOGLE_APPLICATION_CREDENTIALS env variable (file path)');
-          console.error('3. Place service account JSON file at /key/key-1.json');
-          return false;
+        } catch (e: any) {
+          console.warn(`Failed to use service account from ${keyPath}: ${e.message}`);
         }
+      }
+
+      // Method 2: Try FIREBASE_SERVICE_ACCOUNT env variable (JSON string)
+      if (!initialized) {
+        const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+        if (serviceAccountJson && serviceAccountJson.trim().startsWith('{')) {
+          try {
+            const serviceAccount = JSON.parse(serviceAccountJson);
+            if (serviceAccount.project_id && serviceAccount.private_key && serviceAccount.client_email) {
+              firebaseApp = admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                projectId: serviceAccount.project_id,
+              });
+              console.log('FCM initialized successfully using FIREBASE_SERVICE_ACCOUNT env variable');
+              console.log(`Project ID: ${serviceAccount.project_id}, Client Email: ${serviceAccount.client_email}`);
+              initialized = true;
+            }
+          } catch (e: any) {
+            console.warn(`Failed to parse FIREBASE_SERVICE_ACCOUNT: ${e.message}`);
+          }
+        }
+      }
+
+      // Method 3: Try GOOGLE_APPLICATION_CREDENTIALS env variable (file path)
+      if (!initialized) {
+        const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+        if (credentialsPath) {
+          try {
+            // Try to read the file directly if it's a path
+            const resolvedPath = path.isAbsolute(credentialsPath)
+              ? credentialsPath
+              : path.join(process.cwd(), credentialsPath);
+
+            if (fs.existsSync(resolvedPath)) {
+              const fileContent = fs.readFileSync(resolvedPath, 'utf8');
+              const serviceAccount = JSON.parse(fileContent);
+
+              if (serviceAccount.project_id && serviceAccount.private_key && serviceAccount.client_email) {
+                firebaseApp = admin.initializeApp({
+                  credential: admin.credential.cert(serviceAccount),
+                  projectId: serviceAccount.project_id,
+                });
+                console.log(`FCM initialized successfully using GOOGLE_APPLICATION_CREDENTIALS: ${resolvedPath}`);
+                console.log(`Project ID: ${serviceAccount.project_id}, Client Email: ${serviceAccount.client_email}`);
+                initialized = true;
+              }
+            }
+          } catch (e: any) {
+            console.warn(`Failed to use GOOGLE_APPLICATION_CREDENTIALS: ${e.message}`);
+          }
+        }
+      }
+
+      if (!initialized) {
+        console.error('FCM initialization failed. Tried:');
+        console.error('1. Local key files: /key/key-1.json, /key/firebase-key.json, /key/service-account.json');
+        console.error('2. FIREBASE_SERVICE_ACCOUNT env variable (JSON string)');
+        console.error('3. GOOGLE_APPLICATION_CREDENTIALS env variable (file path)');
+        return false;
       }
     } else {
       firebaseApp = admin.app();
