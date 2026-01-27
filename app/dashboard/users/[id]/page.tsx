@@ -30,39 +30,10 @@ type User = {
   woocommerceCustomerId?: number;
 };
 
-type DailyCheckIn = {
-  id: string;
+type CheckInDay = {
   date: string;
-  buttonType: string;
-  time: string;
-};
-
-type DayData = {
-  date: string;
-  dayOfWeek: string;
-  checkIns: { id: string; buttonType: string; time: string }[];
   hasCheckIn: boolean;
-};
-
-type WeekData = {
-  week: number;
-  startDate: string;
-  endDate: string;
-  checkIns: DailyCheckIn[];
-  totalDays: number;
-};
-
-type MonthData = {
-  month: string;
-  monthName: string;
-  checkIns: DailyCheckIn[];
-  totalDays: number;
-};
-
-type CheckInStats = {
-  totalCheckIns: number;
-  currentStreak: number;
-  checkedInToday: boolean;
+  time?: string;
 };
 
 type WeightLog = {
@@ -83,9 +54,10 @@ export default function UserDetailsPage() {
   const userId = params?.id as string;
 
   const [user, setUser] = useState<User | null>(null);
-  const [checkInData, setCheckInData] = useState<DayData[] | WeekData[] | MonthData[]>([]);
-  const [checkInStats, setCheckInStats] = useState<CheckInStats | null>(null);
+  const [checkInDays, setCheckInDays] = useState<CheckInDay[]>([]);
   const [checkInPeriod, setCheckInPeriod] = useState<'days' | 'weeks' | 'months'>('days');
+  const [checkInOffset, setCheckInOffset] = useState(0);
+  const [checkInStreak, setCheckInStreak] = useState(0);
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingCheckIns, setLoadingCheckIns] = useState(false);
@@ -143,15 +115,20 @@ export default function UserDetailsPage() {
 
       try {
         setLoadingCheckIns(true);
+
+        // Calculate days to fetch based on period and offset
+        const daysPerView = checkInPeriod === 'days' ? 7 : checkInPeriod === 'weeks' ? 28 : 31;
+        const offsetDays = checkInOffset * daysPerView;
+
         const response = await fetch(
-          `/api/app-users/${user.id}/daily-checkins?period=${checkInPeriod}`,
+          `/api/app-users/${user.id}/daily-checkins?period=days&count=${daysPerView}&offset=${offsetDays}`,
           { credentials: 'include' }
         );
 
         if (response.ok) {
           const data = await response.json();
-          setCheckInData(data.data || []);
-          setCheckInStats(data.statistics || null);
+          setCheckInDays(data.data || []);
+          setCheckInStreak(data.statistics?.currentStreak || 0);
         }
       } catch (error) {
         console.error('Error fetching daily check-ins:', error);
@@ -161,7 +138,12 @@ export default function UserDetailsPage() {
     };
 
     fetchCheckIns();
-  }, [user, checkInPeriod]);
+  }, [user, checkInPeriod, checkInOffset]);
+
+  // Reset offset when period changes
+  useEffect(() => {
+    setCheckInOffset(0);
+  }, [checkInPeriod]);
 
   // Fetch weight logs for this user
   useEffect(() => {
@@ -423,293 +405,148 @@ export default function UserDetailsPage() {
         </div>
       </div>
 
-      {/* Daily Check-In Tracker Section */}
+      {/* Medication Log Section */}
       <div className="bg-white rounded-lg border border-[#dfedfb] p-6">
+        {/* Header with View Toggle and Navigation */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div>
-            <h5 className="text-xl font-semibold text-[#435970]">Daily Check-In Tracker</h5>
-            <p className="text-sm text-[#7895b3] mt-1">Track medication adherence over time</p>
+          <div className="flex items-center gap-4">
+            <h5 className="text-xl font-semibold text-[#435970]">Medication Log</h5>
+            {checkInStreak > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clipRule="evenodd" />
+                </svg>
+                {checkInStreak} day streak
+              </span>
+            )}
           </div>
 
-          {/* Period Selector */}
-          <div className="flex bg-[#dfedfb]/30 rounded-lg p-1">
-            {(['days', 'weeks', 'months'] as const).map((period) => (
-              <button
-                key={period}
-                onClick={() => setCheckInPeriod(period)}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  checkInPeriod === period
-                    ? 'bg-[#435970] text-white shadow-sm'
-                    : 'text-[#7895b3] hover:text-[#435970]'
-                }`}
-              >
-                {period.charAt(0).toUpperCase() + period.slice(1)}
-              </button>
-            ))}
+          {/* View Toggle */}
+          <div className="flex items-center gap-2">
+            <div className="flex bg-[#dfedfb]/50 rounded-lg p-0.5">
+              {(['days', 'weeks', 'months'] as const).map((period) => (
+                <button
+                  key={period}
+                  onClick={() => setCheckInPeriod(period)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    checkInPeriod === period
+                      ? 'bg-white text-[#435970] shadow-sm'
+                      : 'text-[#7895b3] hover:text-[#435970]'
+                  }`}
+                >
+                  {period === 'days' ? '7 Days' : period === 'weeks' ? '4 Weeks' : 'Month'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Statistics Cards */}
-        {checkInStats && (
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-gradient-to-br from-[#435970] to-[#5a7a96] rounded-lg p-4 text-white">
-              <div className="flex items-center gap-2 mb-2">
-                <svg className="w-5 h-5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
-                </svg>
-                <span className="text-xs font-medium opacity-80">Current Streak</span>
-              </div>
-              <p className="text-3xl font-bold">{checkInStats.currentStreak}</p>
-              <p className="text-xs opacity-70 mt-1">consecutive days</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-[#7895b3] to-[#96afc9] rounded-lg p-4 text-white">
-              <div className="flex items-center gap-2 mb-2">
-                <svg className="w-5 h-5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-xs font-medium opacity-80">Total Check-Ins</span>
-              </div>
-              <p className="text-3xl font-bold">{checkInStats.totalCheckIns}</p>
-              <p className="text-xs opacity-70 mt-1">in selected period</p>
-            </div>
-
-            <div className={`rounded-lg p-4 text-white ${
-              checkInStats.checkedInToday
-                ? 'bg-gradient-to-br from-green-500 to-green-600'
-                : 'bg-gradient-to-br from-orange-400 to-orange-500'
-            }`}>
-              <div className="flex items-center gap-2 mb-2">
-                <svg className="w-5 h-5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-xs font-medium opacity-80">Today</span>
-              </div>
-              <p className="text-xl font-bold">
-                {checkInStats.checkedInToday ? 'Checked In' : 'Not Yet'}
-              </p>
-              <p className="text-xs opacity-70 mt-1">
-                {checkInStats.checkedInToday ? 'Great job!' : 'Pending check-in'}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Check-In Data Display */}
-        {loadingCheckIns ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-[#435970]"></div>
-            <p className="ml-3 text-[#7895b3]">Loading check-in data...</p>
-          </div>
-        ) : checkInData.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="w-16 h-16 mx-auto text-[#dfedfb] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        {/* Navigation Header */}
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#dfedfb]">
+          <button
+            onClick={() => setCheckInOffset(checkInOffset + 1)}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm text-[#7895b3] hover:text-[#435970] hover:bg-[#dfedfb]/30 rounded-lg transition-all"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            <p className="text-[#7895b3]">No check-in data found for this period.</p>
-            <p className="text-sm text-[#7895b3]/70 mt-1">Check-ins will appear here when the user logs their medication.</p>
+            Previous
+          </button>
+          <span className="text-sm font-medium text-[#435970]">
+            {checkInDays.length > 0 && (
+              <>
+                {new Date(checkInDays[checkInDays.length - 1]?.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {' - '}
+                {new Date(checkInDays[0]?.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </>
+            )}
+          </span>
+          <button
+            onClick={() => setCheckInOffset(Math.max(0, checkInOffset - 1))}
+            disabled={checkInOffset === 0}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm text-[#7895b3] hover:text-[#435970] hover:bg-[#dfedfb]/30 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        {loadingCheckIns ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-[#435970]"></div>
+            <p className="ml-2 text-sm text-[#7895b3]">Loading...</p>
           </div>
-        ) : checkInPeriod === 'days' ? (
-          /* Calendar Grid View for Days */
-          <div className="space-y-4">
-            {/* Week Headers */}
-            <div className="grid grid-cols-7 gap-2 text-center">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                <div key={day} className="text-xs font-medium text-[#7895b3] py-2">
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {/* Calendar Grid */}
-            <div className="grid grid-cols-7 gap-2">
-              {(checkInData as DayData[]).slice(0, 28).reverse().map((day, index) => {
-                const date = new Date(day.date);
-                const isToday = day.date === new Date().toISOString().split('T')[0];
-
-                return (
-                  <div
-                    key={day.date}
-                    className={`relative aspect-square rounded-lg border transition-all ${
-                      day.hasCheckIn
-                        ? 'bg-green-50 border-green-200 hover:border-green-400'
-                        : 'bg-[#dfedfb]/10 border-[#dfedfb] hover:border-[#7895b3]'
-                    } ${isToday ? 'ring-2 ring-[#435970] ring-offset-1' : ''}`}
-                    title={`${day.date}: ${day.hasCheckIn ? `${day.checkIns.length} check-in(s)` : 'No check-in'}`}
-                  >
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-1">
-                      <span className={`text-xs font-medium ${
-                        day.hasCheckIn ? 'text-green-700' : 'text-[#7895b3]'
-                      }`}>
-                        {date.getDate()}
-                      </span>
-                      {day.hasCheckIn && (
-                        <svg className="w-4 h-4 text-green-500 mt-1" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Recent Check-Ins List */}
-            <div className="mt-6 pt-6 border-t border-[#dfedfb]">
-              <h6 className="text-sm font-semibold text-[#435970] mb-4">Recent Check-Ins</h6>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {(checkInData as DayData[])
-                  .filter(d => d.hasCheckIn)
-                  .slice(0, 10)
-                  .map((day) => (
-                    <div
-                      key={day.date}
-                      className="flex items-center justify-between bg-[#dfedfb]/20 rounded-lg px-4 py-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                          <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-[#435970]">
-                            {new Date(day.date).toLocaleDateString('en-US', {
-                              weekday: 'long',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </p>
-                          <p className="text-xs text-[#7895b3]">
-                            {day.checkIns.length} check-in{day.checkIns.length > 1 ? 's' : ''}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-[#7895b3]">
-                          {new Date(day.checkIns[0].time).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
-        ) : checkInPeriod === 'weeks' ? (
-          /* Week View */
-          <div className="space-y-4">
-            {(checkInData as WeekData[]).map((week) => (
-              <div
-                key={week.week}
-                className="bg-[#dfedfb]/20 rounded-lg p-5 border border-[#dfedfb]"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h6 className="text-base font-semibold text-[#435970]">
-                      Week {week.week}
-                    </h6>
-                    <p className="text-sm text-[#7895b3]">
-                      {new Date(week.startDate).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })} - {new Date(week.endDate).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-2xl font-bold ${
-                        week.totalDays >= 5 ? 'text-green-600' : week.totalDays >= 3 ? 'text-orange-500' : 'text-[#7895b3]'
-                      }`}>
-                        {week.totalDays}/7
-                      </span>
-                      <span className="text-sm text-[#7895b3]">days</span>
-                    </div>
-                    <div className="flex gap-1 mt-2">
-                      {Array.from({ length: 7 }, (_, i) => (
-                        <div
-                          key={i}
-                          className={`w-3 h-3 rounded-full ${
-                            i < week.totalDays ? 'bg-green-500' : 'bg-gray-200'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div
-                    className={`h-2.5 rounded-full transition-all ${
-                      week.totalDays >= 5 ? 'bg-green-500' : week.totalDays >= 3 ? 'bg-orange-400' : 'bg-gray-400'
-                    }`}
-                    style={{ width: `${(week.totalDays / 7) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+        ) : checkInDays.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-sm text-[#7895b3]">No medication logs found.</p>
           </div>
         ) : (
-          /* Month View */
-          <div className="space-y-4">
-            {(checkInData as MonthData[]).map((month) => {
-              const daysInMonth = new Date(
-                parseInt(month.month.split('-')[0]),
-                parseInt(month.month.split('-')[1]),
-                0
-              ).getDate();
-              const percentage = Math.round((month.totalDays / daysInMonth) * 100);
+          <div className="space-y-1">
+            {checkInDays.map((day) => {
+              const date = new Date(day.date);
+              const isToday = day.date === new Date().toISOString().split('T')[0];
 
               return (
                 <div
-                  key={month.month}
-                  className="bg-[#dfedfb]/20 rounded-lg p-5 border border-[#dfedfb]"
+                  key={day.date}
+                  className={`flex items-center justify-between py-2.5 px-3 rounded-lg transition-all ${
+                    day.hasCheckIn ? 'bg-green-50' : 'hover:bg-[#dfedfb]/20'
+                  } ${isToday ? 'ring-1 ring-[#435970]' : ''}`}
                 >
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      day.hasCheckIn ? 'bg-green-500' : 'bg-gray-200'
+                    }`}>
+                      {day.hasCheckIn ? (
+                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                    </div>
                     <div>
-                      <h6 className="text-lg font-semibold text-[#435970]">
-                        {month.monthName}
-                      </h6>
-                      <p className="text-sm text-[#7895b3]">
-                        {month.checkIns.length} total check-ins
+                      <p className={`text-sm font-medium ${day.hasCheckIn ? 'text-green-700' : 'text-[#7895b3]'}`}>
+                        {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {isToday && <span className="ml-2 text-xs text-[#435970]">(Today)</span>}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-baseline gap-1">
-                        <span className={`text-3xl font-bold ${
-                          percentage >= 70 ? 'text-green-600' : percentage >= 50 ? 'text-orange-500' : 'text-[#7895b3]'
-                        }`}>
-                          {month.totalDays}
-                        </span>
-                        <span className="text-lg text-[#7895b3]">/{daysInMonth}</span>
-                      </div>
-                      <p className="text-sm text-[#7895b3]">{percentage}% adherence</p>
-                    </div>
                   </div>
-
-                  {/* Progress Bar */}
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                      className={`h-3 rounded-full transition-all ${
-                        percentage >= 70 ? 'bg-green-500' : percentage >= 50 ? 'bg-orange-400' : 'bg-gray-400'
-                      }`}
-                      style={{ width: `${percentage}%` }}
-                    />
+                  <div className="text-right">
+                    {day.hasCheckIn && day.time ? (
+                      <span className="text-xs text-green-600 font-medium">
+                        {new Date(day.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-[#7895b3]">-</span>
+                    )}
                   </div>
-
-                  <p className="text-xs text-[#7895b3] mt-2">
-                    {percentage >= 70 ? 'Excellent adherence!' : percentage >= 50 ? 'Good progress, keep it up!' : 'Room for improvement'}
-                  </p>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Summary Footer */}
+        {checkInDays.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-[#dfedfb] flex items-center justify-between">
+            <span className="text-xs text-[#7895b3]">
+              {checkInDays.filter(d => d.hasCheckIn).length} of {checkInDays.length} days logged
+            </span>
+            <div className="flex gap-0.5">
+              {checkInDays.slice().reverse().map((day, i) => (
+                <div
+                  key={i}
+                  className={`w-2 h-2 rounded-full ${day.hasCheckIn ? 'bg-green-500' : 'bg-gray-200'}`}
+                  title={day.date}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
