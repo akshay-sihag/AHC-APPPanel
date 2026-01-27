@@ -272,7 +272,7 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      response.history = history.map(h => ({
+      response.history = history.map((h: { id: string; date: string; buttonType: string; createdAt: Date }) => ({
         id: h.id,
         date: h.date,
         buttonType: h.buttonType,
@@ -286,7 +286,7 @@ export async function GET(request: NextRequest) {
         const checkDate = new Date(today);
         checkDate.setDate(checkDate.getDate() - i);
         const dateStr = checkDate.toISOString().split('T')[0];
-        if (history.some(h => h.date === dateStr)) {
+        if (history.some((h: { date: string }) => h.date === dateStr)) {
           streak++;
         } else if (i > 0) {
           break; // Streak broken

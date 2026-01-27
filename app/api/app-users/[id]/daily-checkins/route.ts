@@ -14,8 +14,11 @@ type CheckInRecord = {
  * GET - Fetch daily check-ins for a specific user (Admin only)
  *
  * Query Parameters:
- * - count: number of days to fetch (default: 7)
+ * - view: 'days' | 'weeks' | 'month' (default: 'days')
  * - offset: number of periods to skip for pagination (default: 0)
+ *   - days: offset by weeks (7 days)
+ *   - weeks: offset by 4 weeks (28 days)
+ *   - month: offset by months
  */
 export async function GET(
   request: NextRequest,
@@ -33,7 +36,7 @@ export async function GET(
 
     const { id: userId } = await params;
     const { searchParams } = new URL(request.url);
-    const count = parseInt(searchParams.get('count') || '7');
+    const view = searchParams.get('view') || 'days';
     const offset = parseInt(searchParams.get('offset') || '0');
 
     // Find the user
@@ -49,13 +52,30 @@ export async function GET(
       );
     }
 
-    // Calculate date range with offset
     const now = new Date();
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() - (offset * count));
+    let startDate: Date;
+    let endDate: Date;
 
-    const startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - count + 1);
+    if (view === 'month') {
+      // Full calendar month
+      const targetMonth = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      startDate = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
+      endDate = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0);
+    } else if (view === 'weeks') {
+      // 4 weeks (28 days) - starting from Sunday
+      const currentSunday = new Date(now);
+      currentSunday.setDate(now.getDate() - now.getDay() - (offset * 28));
+      startDate = new Date(currentSunday);
+      endDate = new Date(currentSunday);
+      endDate.setDate(endDate.getDate() + 27);
+    } else {
+      // 7 days - current week (Sun-Sat)
+      const currentSunday = new Date(now);
+      currentSunday.setDate(now.getDate() - now.getDay() - (offset * 7));
+      startDate = new Date(currentSunday);
+      endDate = new Date(currentSunday);
+      endDate.setDate(endDate.getDate() + 6);
+    }
 
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = endDate.toISOString().split('T')[0];
@@ -69,7 +89,7 @@ export async function GET(
           lte: endDateStr,
         },
       },
-      orderBy: { date: 'desc' },
+      orderBy: { date: 'asc' },
       select: {
         id: true,
         date: true,
@@ -84,12 +104,11 @@ export async function GET(
       checkInMap.set(c.date, c);
     });
 
-    // Build days array
+    // Build days array from start to end
     const days = [];
-    for (let i = 0; i < count; i++) {
-      const d = new Date(endDate);
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+    const current = new Date(startDate);
+    while (current <= endDate) {
+      const dateStr = current.toISOString().split('T')[0];
       const checkIn = checkInMap.get(dateStr);
 
       days.push({
@@ -97,36 +116,35 @@ export async function GET(
         hasCheckIn: !!checkIn,
         time: checkIn?.createdAt.toISOString(),
       });
+
+      current.setDate(current.getDate() + 1);
     }
 
-    // Calculate current streak (only for offset 0)
+    // Calculate current streak
     let streak = 0;
-    if (offset === 0) {
-      const today = now.toISOString().split('T')[0];
+    const today = now.toISOString().split('T')[0];
 
-      // Fetch more data for streak calculation
-      const streakCheckIns = await prisma.dailyCheckIn.findMany({
-        where: {
-          appUserId: user.id,
-          date: { lte: today },
-        },
-        orderBy: { date: 'desc' },
-        select: { date: true },
-        take: 60,
-      });
+    const streakCheckIns = await prisma.dailyCheckIn.findMany({
+      where: {
+        appUserId: user.id,
+        date: { lte: today },
+      },
+      orderBy: { date: 'desc' },
+      select: { date: true },
+      take: 60,
+    });
 
-      const streakDates = new Set(streakCheckIns.map((c: { date: string }) => c.date));
+    const streakDates = new Set(streakCheckIns.map((c: { date: string }) => c.date));
 
-      for (let i = 0; i < 60; i++) {
-        const checkDate = new Date(now);
-        checkDate.setDate(checkDate.getDate() - i);
-        const dateStr = checkDate.toISOString().split('T')[0];
+    for (let i = 0; i < 60; i++) {
+      const checkDate = new Date(now);
+      checkDate.setDate(checkDate.getDate() - i);
+      const dateStr = checkDate.toISOString().split('T')[0];
 
-        if (streakDates.has(dateStr)) {
-          streak++;
-        } else if (i > 0) {
-          break;
-        }
+      if (streakDates.has(dateStr)) {
+        streak++;
+      } else if (i > 0) {
+        break;
       }
     }
 
@@ -138,6 +156,7 @@ export async function GET(
         wpUserId: user.wpUserId,
         name: user.name,
       },
+      view,
       dateRange: {
         start: startDateStr,
         end: endDateStr,

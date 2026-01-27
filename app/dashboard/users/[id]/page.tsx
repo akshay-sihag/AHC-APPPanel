@@ -116,12 +116,12 @@ export default function UserDetailsPage() {
       try {
         setLoadingCheckIns(true);
 
-        // Calculate days to fetch based on period and offset
-        const daysPerView = checkInPeriod === 'days' ? 7 : checkInPeriod === 'weeks' ? 28 : 31;
-        const offsetDays = checkInOffset * daysPerView;
+        // Map period to view parameter
+        const viewMap = { days: 'days', weeks: 'weeks', months: 'month' };
+        const view = viewMap[checkInPeriod];
 
         const response = await fetch(
-          `/api/app-users/${user.id}/daily-checkins?period=days&count=${daysPerView}&offset=${offsetDays}`,
+          `/api/app-users/${user.id}/daily-checkins?view=${view}&offset=${checkInOffset}`,
           { credentials: 'include' }
         );
 
@@ -434,7 +434,7 @@ export default function UserDetailsPage() {
                       : 'text-[#7895b3] hover:text-[#435970]'
                   }`}
                 >
-                  {period === 'days' ? '7 Days' : period === 'weeks' ? '4 Weeks' : 'Month'}
+                  {period === 'days' ? 'Week' : period === 'weeks' ? '4 Weeks' : 'Month'}
                 </button>
               ))}
             </div>
@@ -450,15 +450,21 @@ export default function UserDetailsPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Previous
+            Older
           </button>
           <span className="text-sm font-medium text-[#435970]">
             {checkInDays.length > 0 && (
-              <>
-                {new Date(checkInDays[checkInDays.length - 1]?.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                {' - '}
-                {new Date(checkInDays[0]?.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </>
+              checkInPeriod === 'months' ? (
+                // Month view - show month name
+                new Date(checkInDays[0]?.date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+              ) : (
+                // Days/Weeks view - show date range
+                <>
+                  {new Date(checkInDays[0]?.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {' - '}
+                  {new Date(checkInDays[checkInDays.length - 1]?.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </>
+              )
             )}
           </span>
           <button
@@ -466,7 +472,7 @@ export default function UserDetailsPage() {
             disabled={checkInOffset === 0}
             className="flex items-center gap-1 px-3 py-1.5 text-sm text-[#7895b3] hover:text-[#435970] hover:bg-[#dfedfb]/30 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Next
+            Newer
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
@@ -485,7 +491,7 @@ export default function UserDetailsPage() {
           </div>
         ) : (
           <div className="space-y-1">
-            {checkInDays.map((day) => {
+            {[...checkInDays].reverse().map((day) => {
               const date = new Date(day.date);
               const isToday = day.date === new Date().toISOString().split('T')[0];
 
@@ -539,7 +545,7 @@ export default function UserDetailsPage() {
               {checkInDays.filter(d => d.hasCheckIn).length} of {checkInDays.length} days logged
             </span>
             <div className="flex gap-0.5">
-              {checkInDays.slice().reverse().map((day, i) => (
+              {checkInDays.map((day, i) => (
                 <div
                   key={i}
                   className={`w-2 h-2 rounded-full ${day.hasCheckIn ? 'bg-green-500' : 'bg-gray-200'}`}
