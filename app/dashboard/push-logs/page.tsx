@@ -25,6 +25,25 @@ type PushLog = {
   sentAt: string | null;
 };
 
+type ScheduledNotification = {
+  id: string;
+  appUserId: string;
+  checkInId: string;
+  medicationName: string;
+  scheduledDate: string;
+  scheduledType: string;
+  title: string;
+  body: string;
+  status: string;
+  sentAt: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  appUser: {
+    email: string;
+    name: string | null;
+  };
+};
+
 type PushLogsResponse = {
   logs: PushLog[];
   pagination: {
@@ -42,14 +61,24 @@ type PushLogsResponse = {
 };
 
 export default function PushLogsPage() {
+  const [activeTab, setActiveTab] = useState<'logs' | 'scheduled'>('logs');
   const [logs, setLogs] = useState<PushLog[]>([]);
+  const [scheduledNotifications, setScheduledNotifications] = useState<ScheduledNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scheduledLoading, setScheduledLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [scheduledStatusFilter, setScheduledStatusFilter] = useState('');
+  const [scheduledStats, setScheduledStats] = useState({
+    pending: 0,
+    sent: 0,
+    failed: 0,
+    total: 0,
+  });
   const [stats, setStats] = useState({
     totalSent: 0,
     totalFailed: 0,
@@ -106,6 +135,37 @@ export default function PushLogsPage() {
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
+
+  // Fetch scheduled notifications
+  const fetchScheduledNotifications = useCallback(async () => {
+    try {
+      setScheduledLoading(true);
+      const params = new URLSearchParams();
+      if (scheduledStatusFilter) params.append('status', scheduledStatusFilter);
+
+      const response = await fetch(`/api/scheduled-notifications?${params.toString()}`, {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch scheduled notifications');
+      }
+
+      const data = await response.json();
+      setScheduledNotifications(data.notifications || []);
+      setScheduledStats(data.stats || { pending: 0, sent: 0, failed: 0, total: 0 });
+    } catch (error) {
+      console.error('Error fetching scheduled notifications:', error);
+    } finally {
+      setScheduledLoading(false);
+    }
+  }, [scheduledStatusFilter]);
+
+  useEffect(() => {
+    if (activeTab === 'scheduled') {
+      fetchScheduledNotifications();
+    }
+  }, [activeTab, fetchScheduledNotifications]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.totalPages) {
@@ -233,6 +293,32 @@ export default function PushLogsPage() {
     setPagination({ ...pagination, page: 1 });
   };
 
+  const getScheduledTypeBadgeClass = (type: string) => {
+    switch (type) {
+      case 'immediate':
+        return 'bg-blue-100 text-blue-700';
+      case 'day_before':
+        return 'bg-yellow-100 text-yellow-700';
+      case 'on_date':
+        return 'bg-purple-100 text-purple-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const getScheduledTypeLabel = (type: string) => {
+    switch (type) {
+      case 'immediate':
+        return 'Immediate';
+      case 'day_before':
+        return 'Day Before';
+      case 'on_date':
+        return 'On Date';
+      default:
+        return type;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header Section */}
@@ -243,6 +329,236 @@ export default function PushLogsPage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-[#dfedfb]">
+        <button
+          onClick={() => setActiveTab('logs')}
+          className={`px-6 py-3 font-medium text-sm transition-colors border-b-2 -mb-px ${
+            activeTab === 'logs'
+              ? 'text-[#435970] border-[#435970]'
+              : 'text-[#7895b3] border-transparent hover:text-[#435970]'
+          }`}
+        >
+          Push Logs
+        </button>
+        <button
+          onClick={() => setActiveTab('scheduled')}
+          className={`px-6 py-3 font-medium text-sm transition-colors border-b-2 -mb-px flex items-center gap-2 ${
+            activeTab === 'scheduled'
+              ? 'text-[#435970] border-[#435970]'
+              : 'text-[#7895b3] border-transparent hover:text-[#435970]'
+          }`}
+        >
+          Scheduled Notifications
+          {scheduledStats.pending > 0 && (
+            <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded-full">
+              {scheduledStats.pending}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'scheduled' ? (
+        <>
+          {/* Scheduled Notifications Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-[#7895b3] mb-1">Pending</p>
+                  <p className="text-2xl font-bold text-yellow-600">{scheduledStats.pending}</p>
+                </div>
+                <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-[#7895b3] mb-1">Sent</p>
+                  <p className="text-2xl font-bold text-green-600">{scheduledStats.sent}</p>
+                </div>
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-[#7895b3] mb-1">Failed</p>
+                  <p className="text-2xl font-bold text-red-600">{scheduledStats.failed}</p>
+                </div>
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-[#7895b3] mb-1">Total</p>
+                  <p className="text-2xl font-bold text-[#435970]">{scheduledStats.total}</p>
+                </div>
+                <div className="w-10 h-10 bg-[#dfedfb] rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[#435970]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Scheduled Notifications Filter */}
+          <div className="bg-white rounded-lg border border-[#dfedfb] p-4">
+            <div className="flex flex-wrap gap-4 items-end">
+              <div className="w-[200px]">
+                <label className="block text-sm font-medium text-[#435970] mb-1">Status</label>
+                <select
+                  value={scheduledStatusFilter}
+                  onChange={(e) => setScheduledStatusFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
+                >
+                  <option value="">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="sent">Sent</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+              <button
+                onClick={() => setScheduledStatusFilter('')}
+                className="px-4 py-2 text-[#7895b3] hover:text-[#435970] transition-colors"
+              >
+                Clear Filter
+              </button>
+            </div>
+          </div>
+
+          {/* Scheduled Notifications Table */}
+          <div className="bg-white rounded-lg border border-[#dfedfb] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-[#dfedfb]">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Recipient
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Medication
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Title
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Scheduled Date
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
+                      Created
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#dfedfb]">
+                  {scheduledLoading ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center">
+                        <div className="flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#435970]"></div>
+                          <span className="ml-3 text-[#7895b3]">Loading scheduled notifications...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : scheduledNotifications.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center">
+                        <div className="text-[#7895b3]">
+                          <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <p>No scheduled notifications found</p>
+                          <p className="text-xs mt-1">Scheduled notifications will appear here when users log medications with next date</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    scheduledNotifications.map((notif) => (
+                      <tr key={notif.id} className="hover:bg-[#dfedfb]/20 transition-colors">
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${getStatusBadgeClass(notif.status)}`}>
+                            {notif.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getScheduledTypeBadgeClass(notif.scheduledType)}`}>
+                            {getScheduledTypeLabel(notif.scheduledType)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="text-sm font-medium text-[#435970]">
+                            {notif.appUser?.email || 'Unknown'}
+                          </div>
+                          {notif.appUser?.name && (
+                            <div className="text-xs text-[#7895b3]">{notif.appUser.name}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="text-sm font-medium text-[#435970]">
+                            {notif.medicationName}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="text-sm font-medium text-[#435970] max-w-[200px] truncate">
+                            {notif.title}
+                          </div>
+                          <div className="text-xs text-[#7895b3] max-w-[200px] truncate">
+                            {notif.body}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-[#435970] font-medium">
+                            {notif.scheduledDate}
+                          </div>
+                          {notif.sentAt && (
+                            <div className="text-xs text-green-600">
+                              Sent: {new Date(notif.sentAt).toLocaleString()}
+                            </div>
+                          )}
+                          {notif.errorMessage && (
+                            <div className="text-xs text-red-600 truncate max-w-[150px]" title={notif.errorMessage}>
+                              {notif.errorMessage}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-[#435970]">
+                            {new Date(notif.createdAt).toLocaleDateString()}
+                          </div>
+                          <div className="text-xs text-[#7895b3]">
+                            {new Date(notif.createdAt).toLocaleTimeString()}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
       {/* Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
@@ -597,6 +913,8 @@ export default function PushLogsPage() {
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* Detail Modal */}
       {showDetailModal && selectedLog && (

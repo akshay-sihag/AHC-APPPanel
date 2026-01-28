@@ -53,9 +53,20 @@ Records a daily check-in for a user. Each user can only check in once per day pe
 | `email` | string | Yes* | User email address |
 | `buttonType` | string | No | Type of check-in button (default: `"default"`) |
 | `medicationName` | string | No | Name of medication (default: `"default"`). Multiple medications can be logged per day. |
+| `nextDate` | string | No | Next scheduled date for this medication (`YYYY-MM-DD`). When provided, triggers reminder notifications. |
 | `deviceInfo` | string | No | Device information for analytics |
 
 > *Either `wpUserId` or `email` must be provided to identify the user.
+
+#### Scheduled Notifications (nextDate)
+
+When you include a `nextDate` in the request, the system automatically schedules push notifications to remind the user:
+
+1. **Immediate notification**: Sent right away confirming the medication was logged and showing the next scheduled date
+2. **Day before notification**: Sent the day before the next date as a reminder
+3. **On-date notification**: Sent on the scheduled date to remind the user to take their medication
+
+All scheduled notifications can be viewed in the admin dashboard under **Push Logs > Scheduled Notifications**.
 
 #### Example Request
 
@@ -71,6 +82,7 @@ POST /api/app-users/daily-checkin?date=2024-01-15&time=08:30:00
   "email": "user@example.com",
   "buttonType": "default",
   "medicationName": "Semaglutide",
+  "nextDate": "2024-01-22",
   "deviceInfo": "iPhone 14 Pro, iOS 17.2"
 }
 ```
@@ -87,7 +99,13 @@ POST /api/app-users/daily-checkin?date=2024-01-15&time=08:30:00
     "date": "2024-01-15",
     "buttonType": "default",
     "medicationName": "Semaglutide",
+    "nextDate": "2024-01-22",
     "createdAt": "2024-01-15T08:30:00.000Z"
+  },
+  "scheduledReminders": {
+    "immediate": "sent",
+    "dayBefore": "2024-01-21",
+    "onDate": "2024-01-22"
   },
   "user": {
     "email": "user@example.com",
@@ -617,6 +635,8 @@ async function getCheckInStatus(wpUserId, options = {}) {
 
 ## Data Model Reference
 
+### DailyCheckIn
+
 The check-in data is stored with the following structure:
 
 | Field | Type | Description |
@@ -625,14 +645,103 @@ The check-in data is stored with the following structure:
 | `appUserId` | string | Reference to the app user |
 | `date` | string | Check-in date (YYYY-MM-DD format, UTC) |
 | `buttonType` | string | Type of check-in button |
-| `medicationName` | string | Optional medication name associated with check-in |
+| `medicationName` | string | Medication name associated with check-in |
+| `nextDate` | string | Next scheduled date for this medication (YYYY-MM-DD) |
 | `deviceInfo` | string | Optional device information |
 | `ipAddress` | string | Captured IP address (internal use) |
 | `createdAt` | datetime | Timestamp of check-in |
+
+### ScheduledNotification
+
+Scheduled notifications for medication reminders:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier (CUID format) |
+| `appUserId` | string | Reference to the app user |
+| `checkInId` | string | Reference to the check-in that created this notification |
+| `medicationName` | string | Medication name for the notification |
+| `scheduledDate` | string | Date to send notification (YYYY-MM-DD) |
+| `scheduledType` | string | Type of notification: `immediate`, `day_before`, or `on_date` |
+| `title` | string | Notification title |
+| `body` | string | Notification body text |
+| `status` | string | Status: `pending`, `sent`, `failed`, or `cancelled` |
+| `sentAt` | datetime | When the notification was sent (null if pending) |
+| `errorMessage` | string | Error message if failed |
+| `createdAt` | datetime | When the notification was scheduled |
 
 ---
 
 ## Rate Limits
 
 - Standard API rate limits apply
-- The unique constraint prevents duplicate check-ins per user/day/buttonType combination
+- The unique constraint prevents duplicate check-ins per user/day/medication combination
+
+---
+
+## Scheduled Notifications Cron Job
+
+To process scheduled notifications (day_before and on_date reminders), a cron job must be set up to call the processing endpoint daily.
+
+### Endpoint
+
+`GET /api/cron/process-scheduled-notifications`
+
+### Authentication
+
+Include the `CRON_SECRET` environment variable in the request header:
+
+```
+X-Cron-Secret: your_cron_secret_here
+```
+
+or
+
+```
+Authorization: Bearer your_cron_secret_here
+```
+
+### Query Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `dryRun` | boolean | No | If `true`, only reports what would be sent without actually sending |
+
+### Example Cron Setup (Vercel)
+
+Add to `vercel.json`:
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/process-scheduled-notifications",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}
+```
+
+This runs daily at 8:00 AM UTC.
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Notifications processed",
+  "date": "2024-01-22",
+  "processed": 5,
+  "sent": 4,
+  "failed": 0,
+  "skipped": 1,
+  "results": [
+    {
+      "id": "clx1notif123",
+      "medicationName": "Semaglutide",
+      "scheduledType": "on_date",
+      "userEmail": "user@example.com",
+      "status": "sent"
+    }
+  ]
+}
+```

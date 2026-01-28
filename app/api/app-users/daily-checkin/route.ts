@@ -3,12 +3,14 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-config';
 import { validateApiKey } from '@/lib/middleware';
 import { prisma } from '@/lib/prisma';
+import { sendPushNotificationToUser } from '@/lib/fcm-service';
 
 type CheckInRecord = {
   id: string;
   date: string;
   buttonType: string;
   medicationName: string;
+  nextDate: string | null;
   createdAt: string;
 };
 
@@ -80,6 +82,104 @@ async function authenticateRequest(request: NextRequest): Promise<{ type: 'apiKe
 }
 
 /**
+ * Calculate the day before a given date
+ */
+function getDayBefore(dateStr: string): string {
+  const date = new Date(dateStr);
+  date.setDate(date.getDate() - 1);
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * Schedule medication reminder notifications
+ * Creates 3 notifications:
+ * 1. Immediate - confirms logging and shows next date
+ * 2. Day before next date - reminder
+ * 3. On next date - reminder to take medication
+ */
+async function scheduleMedicationReminders(
+  appUserId: string,
+  checkInId: string,
+  medicationName: string,
+  nextDate: string,
+  userEmail: string
+): Promise<void> {
+  const dayBefore = getDayBefore(nextDate);
+  const today = getTodayDate();
+
+  // 1. Send immediate notification
+  const immediateTitle = 'Medication Logged';
+  const immediateBody = `Your ${medicationName} has been logged. Next dose scheduled for ${nextDate}.`;
+
+  await sendPushNotificationToUser(
+    userEmail,
+    immediateTitle,
+    immediateBody,
+    undefined,
+    {
+      type: 'medication_reminder',
+      medicationName,
+      nextDate,
+      action: 'logged',
+    },
+    {
+      source: 'system',
+      type: 'general',
+      sourceId: `checkin_${checkInId}_immediate`,
+    }
+  );
+
+  // Create scheduled notification log for immediate (already sent)
+  await prisma.scheduledNotification.create({
+    data: {
+      appUserId,
+      checkInId,
+      medicationName,
+      scheduledDate: today,
+      scheduledType: 'immediate',
+      title: immediateTitle,
+      body: immediateBody,
+      status: 'sent',
+      sentAt: new Date(),
+    },
+  });
+
+  // 2. Schedule day before notification (if day before is in the future)
+  if (dayBefore > today) {
+    await prisma.scheduledNotification.create({
+      data: {
+        appUserId,
+        checkInId,
+        medicationName,
+        scheduledDate: dayBefore,
+        scheduledType: 'day_before',
+        title: 'Medication Reminder - Tomorrow',
+        body: `Reminder: Your ${medicationName} is scheduled for tomorrow (${nextDate}).`,
+        status: 'pending',
+      },
+    });
+  }
+
+  // 3. Schedule on-date notification (if next date is in the future or today)
+  if (nextDate >= today) {
+    await prisma.scheduledNotification.create({
+      data: {
+        appUserId,
+        checkInId,
+        medicationName,
+        scheduledDate: nextDate,
+        scheduledType: 'on_date',
+        title: 'Medication Due Today',
+        body: `Today is the day! Your ${medicationName} is due. Don't forget to log it.`,
+        status: 'pending',
+      },
+    });
+  }
+
+  console.log(`Scheduled medication reminders for ${medicationName}: immediate (sent), day_before (${dayBefore}), on_date (${nextDate})`);
+}
+
+/**
  * POST - Register a daily check-in for a user
  *
  * Authentication: API key required (mobile app only)
@@ -93,6 +193,7 @@ async function authenticateRequest(request: NextRequest): Promise<{ type: 'apiKe
  * - email (string, optional): User email (alternative to wpUserId)
  * - buttonType (string, optional): Type of button pressed (default: "default")
  * - medicationName (string, optional): Name of medication associated with check-in
+ * - nextDate (string, optional): Next scheduled date for this medication (YYYY-MM-DD) - triggers reminder notifications
  * - deviceInfo (string, optional): Device information
  */
 export async function POST(request: NextRequest) {
@@ -138,11 +239,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { wpUserId, email, buttonType = 'default', deviceInfo, medicationName = 'default' } = body;
+    const { wpUserId, email, buttonType = 'default', deviceInfo, medicationName = 'default', nextDate } = body;
 
     if (!wpUserId && !email) {
       return NextResponse.json(
         { error: 'wpUserId or email is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate nextDate if provided
+    if (nextDate && !isValidDate(nextDate)) {
+      return NextResponse.json(
+        { error: 'Invalid nextDate format. Use YYYY-MM-DD.' },
         { status: 400 }
       );
     }
@@ -194,13 +303,30 @@ export async function POST(request: NextRequest) {
           date: checkInDate,
           buttonType,
           medicationName,
+          nextDate: nextDate || undefined,
           deviceInfo: deviceInfo || undefined,
           ipAddress: ipAddress || undefined,
           ...(createdAt && { createdAt }),
         },
       });
 
-      console.log(`Daily check-in recorded: user=${user.email}, date=${checkInDate}, medication=${medicationName}`);
+      console.log(`Daily check-in recorded: user=${user.email}, date=${checkInDate}, medication=${medicationName}, nextDate=${nextDate || 'none'}`);
+
+      // Schedule medication reminder notifications if nextDate is provided
+      if (nextDate) {
+        try {
+          await scheduleMedicationReminders(
+            user.id,
+            checkIn.id,
+            medicationName,
+            nextDate,
+            user.email
+          );
+        } catch (notifError) {
+          console.error('Failed to schedule medication reminders:', notifError);
+          // Don't fail the check-in if notification scheduling fails
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -211,8 +337,14 @@ export async function POST(request: NextRequest) {
           date: checkIn.date,
           buttonType: checkIn.buttonType,
           medicationName: checkIn.medicationName,
+          nextDate: checkIn.nextDate,
           createdAt: checkIn.createdAt.toISOString(),
         },
+        scheduledReminders: nextDate ? {
+          immediate: 'sent',
+          dayBefore: getDayBefore(nextDate),
+          onDate: nextDate,
+        } : null,
         user: {
           email: user.email,
           wpUserId: user.wpUserId,
@@ -241,6 +373,7 @@ export async function POST(request: NextRequest) {
             date: existingCheckIn.date,
             buttonType: existingCheckIn.buttonType,
             medicationName: existingCheckIn.medicationName,
+            nextDate: existingCheckIn.nextDate,
             createdAt: existingCheckIn.createdAt.toISOString(),
           } : null,
           user: {
@@ -381,6 +514,7 @@ export async function GET(request: NextRequest) {
         date: true,
         buttonType: true,
         medicationName: true,
+        nextDate: true,
         createdAt: true,
       },
     });
@@ -397,6 +531,7 @@ export async function GET(request: NextRequest) {
         date: c.date,
         buttonType: c.buttonType,
         medicationName: c.medicationName,
+        nextDate: c.nextDate,
         createdAt: c.createdAt.toISOString(),
       })),
       user: {
@@ -425,6 +560,7 @@ export async function GET(request: NextRequest) {
           date: true,
           buttonType: true,
           medicationName: true,
+          nextDate: true,
           createdAt: true,
         },
       });
@@ -434,6 +570,7 @@ export async function GET(request: NextRequest) {
         date: h.date,
         buttonType: h.buttonType,
         medicationName: h.medicationName,
+        nextDate: h.nextDate,
         createdAt: h.createdAt.toISOString(),
       }));
 
@@ -511,6 +648,7 @@ async function getCalendarView(
       date: true,
       buttonType: true,
       medicationName: true,
+      nextDate: true,
       createdAt: true,
     },
   });
@@ -537,6 +675,7 @@ async function getCalendarView(
       medications: dayCheckIns.map((c) => ({
         id: c.id,
         medicationName: c.medicationName,
+        nextDate: c.nextDate,
         time: c.createdAt.toISOString(),
       })),
     });

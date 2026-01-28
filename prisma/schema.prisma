@@ -154,6 +154,7 @@ model AppUser {
   medicationLogs MedicationLog[]
   notificationViews NotificationView[]
   dailyCheckIns  DailyCheckIn[]
+  scheduledNotifications ScheduledNotification[]
 
   // Timestamps
   createdAt      DateTime @default(now())
@@ -403,6 +404,7 @@ model DailyCheckIn {
   date           String   // Date in YYYY-MM-DD format for easy daily checking
   buttonType     String   @default("default") // Type of button pressed (for multiple buttons)
   medicationName String   @default("default") // Medication name for the check-in
+  nextDate       String?  // Next scheduled date in YYYY-MM-DD format for reminder notifications
 
   // Metadata
   deviceInfo  String?  // Optional device info
@@ -419,5 +421,37 @@ model DailyCheckIn {
   @@index([appUserId])
   @@index([date])
   @@index([medicationName])
+  @@index([nextDate])
   @@map("daily_check_ins")
+}
+
+model ScheduledNotification {
+  id             String   @id @default(cuid())
+  appUserId      String   // Foreign key to AppUser
+  checkInId      String   // Reference to the DailyCheckIn that created this
+  medicationName String   // Medication name for the notification
+  scheduledDate  String   // Date to send notification (YYYY-MM-DD)
+  scheduledType  String   // 'immediate' | 'day_before' | 'on_date'
+
+  // Notification content
+  title          String
+  body           String
+
+  // Status tracking
+  status         String   @default("pending") // 'pending' | 'sent' | 'failed' | 'cancelled'
+  sentAt         DateTime?
+  errorMessage   String?
+
+  // Relations
+  appUser        AppUser  @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([appUserId])
+  @@index([scheduledDate])
+  @@index([status])
+  @@index([scheduledType])
+  @@map("scheduled_notifications")
 }
