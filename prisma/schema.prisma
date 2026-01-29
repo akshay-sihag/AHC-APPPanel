@@ -69,6 +69,10 @@ model Settings {
   // Custom API Key (for panel reset recovery - plain text, admin-managed)
   customApiKey String?
 
+  // Maintenance Mode
+  maintenanceMode    Boolean @default(false)
+  maintenanceMessage String?
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

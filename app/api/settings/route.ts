@@ -63,6 +63,8 @@ export async function PUT(request: NextRequest) {
       fcmServerKey,
       fcmProjectId,
       customApiKey,
+      maintenanceMode,
+      maintenanceMessage,
     } = body;
 
     // Get or create settings
@@ -92,6 +94,8 @@ export async function PUT(request: NextRequest) {
         fcmServerKey: fcmServerKey !== undefined ? fcmServerKey : settings.fcmServerKey,
         fcmProjectId: fcmProjectId !== undefined ? fcmProjectId : settings.fcmProjectId,
         customApiKey: customApiKey !== undefined ? customApiKey : settings.customApiKey,
+        maintenanceMode: maintenanceMode !== undefined ? maintenanceMode : settings.maintenanceMode,
+        maintenanceMessage: maintenanceMessage !== undefined ? maintenanceMessage : settings.maintenanceMessage,
       },
     });
 

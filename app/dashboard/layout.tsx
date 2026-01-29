@@ -14,8 +14,29 @@ function DashboardLayoutContent({
   const { data: session, status } = useSession();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  // Fetch maintenance mode status
+  useEffect(() => {
+    const fetchMaintenanceStatus = async () => {
+      try {
+        const response = await fetch('/api/maintenance/status');
+        if (response.ok) {
+          const data = await response.json();
+          setIsMaintenanceMode(data.isMaintenanceMode);
+        }
+      } catch (error) {
+        console.error('Error fetching maintenance status:', error);
+      }
+    };
+
+    fetchMaintenanceStatus();
+    // Refresh every 30 seconds to catch changes
+    const interval = setInterval(fetchMaintenanceStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Auto-expand menus if we're on their subpages
   useEffect(() => {
@@ -106,7 +127,14 @@ function DashboardLayoutContent({
           {isSidebarOpen ? (
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-bold text-white">MY AHC</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold text-white">MY AHC</h1>
+                  {isMaintenanceMode && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-orange-500 text-white rounded animate-pulse">
+                      MAINTENANCE
+                    </span>
+                  )}
+                </div>
                 <div className="mt-0.5 mb-0.5 border-t border-[#ffffff]/30" />
                 <span className="text-xs font-medium text-[#dfedfb] mt-0 block">control panel</span>
               </div>
@@ -131,25 +159,32 @@ function DashboardLayoutContent({
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 hover:bg-[#7895b3]/20 rounded-lg transition-colors w-full flex justify-center"
-              aria-label="Toggle sidebar"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            <div className="flex flex-col items-center gap-2">
+              {isMaintenanceMode && (
+                <span className="px-1 py-0.5 text-[8px] font-bold bg-orange-500 text-white rounded animate-pulse">
+                  MAINT
+                </span>
+              )}
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="p-2 hover:bg-[#7895b3]/20 rounded-lg transition-colors w-full flex justify-center"
+                aria-label="Toggle sidebar"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 5l7 7-7 7M5 5l7 7-7 7"
-                />
-              </svg>
-            </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
+            </div>
           )}
         </div>
 
@@ -464,6 +499,19 @@ function DashboardLayoutContent({
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Maintenance Mode Banner */}
+        {isMaintenanceMode && (
+          <div className="bg-orange-500 text-white px-4 py-2 flex items-center justify-center gap-2 text-sm font-medium">
+            <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>Maintenance Mode is Active - Mobile app users will see the maintenance message</span>
+            <Link href="/dashboard/settings" className="ml-2 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs transition-colors">
+              Settings
+            </Link>
+          </div>
+        )}
+
         {/* Top Bar */}
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-end">
           <div className="flex items-center gap-4">
