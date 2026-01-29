@@ -17,7 +17,6 @@ export default function SettingsPage() {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [newApiKeyName, setNewApiKeyName] = useState('');
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
-  const [showApiKey, setShowApiKey] = useState<{ [key: string]: boolean }>({});
   const [activeTab, setActiveTab] = useState('general');
   const [secretTokens, setSecretTokens] = useState<{ id: string; name: string; token: string; isLoginToken: boolean; createdAt: string; lastUsed: string | null }[]>([]);
   const [isSecretTokenModalOpen, setIsSecretTokenModalOpen] = useState(false);
@@ -34,6 +33,8 @@ export default function SettingsPage() {
   });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [showPasswordFields, setShowPasswordFields] = useState(false);
+  const [showCustomApiKey, setShowCustomApiKey] = useState(false);
+  const [isSavingCustomApiKey, setIsSavingCustomApiKey] = useState(false);
 
   const handleCreateApiKey = async () => {
     if (!newApiKeyName.trim()) {
@@ -103,8 +104,57 @@ export default function SettingsPage() {
     alert('API key copied to clipboard!');
   };
 
-  const toggleShowApiKey = (id: string) => {
-    setShowApiKey(prev => ({ ...prev, [id]: !prev[id] }));
+  const handleSaveCustomApiKey = async () => {
+    setIsSavingCustomApiKey(true);
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ customApiKey: settings.customApiKey }),
+      });
+
+      if (response.ok) {
+        alert('Custom API key saved successfully!');
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to save custom API key');
+      }
+    } catch (error) {
+      console.error('Error saving custom API key:', error);
+      alert('An error occurred while saving custom API key');
+    } finally {
+      setIsSavingCustomApiKey(false);
+    }
+  };
+
+  const handleClearCustomApiKey = async () => {
+    if (confirm('Are you sure you want to clear the custom API key? This will disable app connections using this key.')) {
+      setIsSavingCustomApiKey(true);
+      try {
+        const response = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ customApiKey: '' }),
+        });
+
+        if (response.ok) {
+          setSettings(prev => ({ ...prev, customApiKey: '' }));
+          alert('Custom API key cleared successfully!');
+        } else {
+          const error = await response.json();
+          alert(error.error || 'Failed to clear custom API key');
+        }
+      } catch (error) {
+        console.error('Error clearing custom API key:', error);
+        alert('An error occurred while clearing custom API key');
+      } finally {
+        setIsSavingCustomApiKey(false);
+      }
+    }
   };
 
   const handleCreateSecretToken = async () => {
@@ -194,15 +244,18 @@ export default function SettingsPage() {
     sessionTimeout: 30,
     requireStrongPassword: true,
     enableTwoFactor: false,
-    
+
     // WooCommerce API Settings
     woocommerceApiUrl: '',
     woocommerceApiKey: '',
     woocommerceApiSecret: '',
-    
+
     // FCM Settings for Push Notifications
     fcmServerKey: '',
     fcmProjectId: '',
+
+    // Custom API Key
+    customApiKey: '',
   });
 
   // Fetch settings on mount and update email when session is available
@@ -223,6 +276,7 @@ export default function SettingsPage() {
             woocommerceApiSecret: data.woocommerceApiSecret || '',
             fcmServerKey: data.fcmServerKey || '',
             fcmProjectId: data.fcmProjectId || '',
+            customApiKey: data.customApiKey || '',
           }));
         }
       } catch (error) {
@@ -394,9 +448,9 @@ export default function SettingsPage() {
   };
 
   const handleReset = () => {
-    if (confirm('Are you sure you want to reset all settings to default values?')) {
-      // Reset to default values
-      setSettings({
+    if (confirm('Are you sure you want to reset all settings to default values? Note: Custom API Key will be preserved.')) {
+      // Reset to default values (preserve customApiKey)
+      setSettings(prev => ({
         adminEmail: 'admin@alternatehealthclub.com',
         timezone: 'America/New_York',
         sessionTimeout: 30,
@@ -407,7 +461,8 @@ export default function SettingsPage() {
         woocommerceApiSecret: '',
         fcmServerKey: '',
         fcmProjectId: '',
-      });
+        customApiKey: prev.customApiKey, // Preserve custom API key
+      }));
     }
   };
 
@@ -958,35 +1013,14 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-2 mb-2">
                         <code className="text-sm font-mono bg-[#dfedfb] px-3 py-1.5 rounded text-[#435970] flex-1">
-                          {showApiKey[apiKey.id] ? apiKey.key : apiKey.key.replace(/[^_]/g, '•')}
+                          {apiKey.key}
                         </code>
-                        <button
-                          type="button"
-                          onClick={() => toggleShowApiKey(apiKey.id)}
-                          className="px-3 py-1.5 text-sm text-[#7895b3] hover:text-[#435970] transition-colors"
-                          title={showApiKey[apiKey.id] ? 'Hide key' : 'Show key'}
-                        >
-                          {showApiKey[apiKey.id] ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m3.29 3.29L3 3m0 0l18 18m0 0l-3.29-3.29m-3.29-3.29l3.29 3.29M12 12l-3.29-3.29m3.29 3.29l3.29 3.29" />
-                            </svg>
-                          ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.522 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.478 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyApiKey(apiKey.key)}
-                          className="px-3 py-1.5 text-sm text-[#7895b3] hover:text-[#435970] transition-colors"
-                          title="Copy key"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        <span className="px-2 py-1 text-xs text-[#7895b3] bg-[#dfedfb] rounded" title="Full key is only available when generated">
+                          <svg className="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                           </svg>
-                        </button>
+                          Secured
+                        </span>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[#7895b3]">
                         <span>Created: {apiKey.createdAt}</span>
@@ -1016,8 +1050,110 @@ export default function SettingsPage() {
               <li>Use API keys to authenticate requests to the API</li>
               <li>Keep your API keys secure and never share them publicly</li>
               <li>Each key can be revoked independently</li>
-              <li>Keys are shown only once when generated - save them securely</li>
+              <li><strong>Important:</strong> Full keys are shown only once when generated - copy and save them immediately</li>
+              <li>After generation, only the key prefix is visible for identification purposes</li>
             </ul>
+          </div>
+
+          {/* Custom API Key Section */}
+          <div className="mt-8 pt-6 border-t border-[#dfedfb]">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h5 className="text-base font-semibold text-[#435970]">Custom API Key (Recovery Key)</h5>
+                <p className="text-xs text-[#7895b3] mt-1">
+                  Set a custom API key that persists across panel resets. Use this to restore app connections after resetting the panel.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-[#dfedfb]/30 rounded-lg border border-[#dfedfb]">
+              <label htmlFor="customApiKey" className="block text-sm font-medium text-[#435970] mb-2">
+                Custom API Key
+              </label>
+              <div className="flex gap-2 mb-3">
+                <div className="relative flex-1">
+                  <input
+                    type={showCustomApiKey ? 'text' : 'password'}
+                    id="customApiKey"
+                    value={settings.customApiKey}
+                    onChange={(e) => handleInputChange('customApiKey', e.target.value)}
+                    placeholder="Enter your custom API key for recovery"
+                    className="w-full px-4 py-2 pr-20 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3] font-mono"
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomApiKey(!showCustomApiKey)}
+                      className="p-1.5 text-[#7895b3] hover:text-[#435970] transition-colors"
+                      title={showCustomApiKey ? 'Hide key' : 'Show key'}
+                    >
+                      {showCustomApiKey ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m3.29 3.29L3 3m0 0l18 18m0 0l-3.29-3.29m-3.29-3.29l3.29 3.29M12 12l-3.29-3.29m3.29 3.29l3.29 3.29" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.522 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.478 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                    {settings.customApiKey && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyApiKey(settings.customApiKey)}
+                        className="p-1.5 text-[#7895b3] hover:text-[#435970] transition-colors"
+                        title="Copy key"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveCustomApiKey}
+                  disabled={isSavingCustomApiKey || !settings.customApiKey.trim()}
+                  className="px-4 py-2 bg-[#435970] text-white rounded-lg font-medium hover:bg-[#7895b3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSavingCustomApiKey ? 'Saving...' : 'Save'}
+                </button>
+                {settings.customApiKey && (
+                  <button
+                    type="button"
+                    onClick={handleClearCustomApiKey}
+                    disabled={isSavingCustomApiKey}
+                    className="px-4 py-2 text-red-600 border border-red-300 rounded-lg font-medium hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-[#7895b3]">
+                This key is stored as-is (not hashed) and can be used to authenticate API requests just like generated keys.
+              </p>
+            </div>
+
+            {/* Custom API Key Info Box */}
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800 font-medium mb-2">How to use Custom API Key:</p>
+              <ol className="text-xs text-blue-700 list-decimal list-inside space-y-1">
+                <li>Before resetting the panel, note down any active generated API key being used by the app</li>
+                <li>Enter that API key here as your Custom API Key and save it</li>
+                <li>After panel reset, the Custom API Key will still work for app authentication</li>
+                <li>This prevents losing app connection when generated API keys are reset</li>
+              </ol>
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="text-xs text-blue-600 font-medium">Note:</p>
+                <ul className="text-xs text-blue-700 list-disc list-inside space-y-1">
+                  <li>Custom API Key is preserved during &quot;Reset to Defaults&quot;</li>
+                  <li>You can use any string as your custom key (doesn&apos;t need to start with ahc_live_sk_)</li>
+                  <li>Keep this key secure - it provides full API access</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
         )}

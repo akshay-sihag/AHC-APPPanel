@@ -14,6 +14,15 @@ type CheckInRecord = {
   createdAt: string;
 };
 
+type CheckInDbRecord = {
+  id: string;
+  date: string;
+  buttonType: string;
+  medicationName: string;
+  nextDate: string | null;
+  createdAt: Date;
+};
+
 type CheckInStatusResponse = {
   success: boolean;
   date: string;
@@ -526,7 +535,7 @@ export async function GET(request: NextRequest) {
       isToday,
       checkedIn: dateCheckIns.length > 0,
       checkInCount: dateCheckIns.length,
-      checkIns: dateCheckIns.map((c) => ({
+      checkIns: dateCheckIns.map((c: CheckInDbRecord) => ({
         id: c.id,
         date: c.date,
         buttonType: c.buttonType,
@@ -565,7 +574,7 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      response.history = history.map((h) => ({
+      response.history = history.map((h: CheckInDbRecord) => ({
         id: h.id,
         date: h.date,
         buttonType: h.buttonType,
@@ -580,7 +589,7 @@ export async function GET(request: NextRequest) {
         const iterDate = new Date(baseDate);
         iterDate.setDate(iterDate.getDate() - i);
         const dateStr = iterDate.toISOString().split('T')[0];
-        if (history.some((h) => h.date === dateStr)) {
+        if (history.some((h: CheckInDbRecord) => h.date === dateStr)) {
           streak++;
         } else if (i > 0) {
           break;
@@ -654,8 +663,8 @@ async function getCalendarView(
   });
 
   // Group check-ins by date (multiple medications per date)
-  const checkInsByDate = new Map<string, typeof checkIns>();
-  checkIns.forEach((c) => {
+  const checkInsByDate = new Map<string, CheckInDbRecord[]>();
+  checkIns.forEach((c: CheckInDbRecord) => {
     const existing = checkInsByDate.get(c.date) || [];
     existing.push(c);
     checkInsByDate.set(c.date, existing);
@@ -672,7 +681,7 @@ async function getCalendarView(
       date: dateStr,
       hasCheckIn: dayCheckIns.length > 0,
       checkInCount: dayCheckIns.length,
-      medications: dayCheckIns.map((c) => ({
+      medications: dayCheckIns.map((c: CheckInDbRecord) => ({
         id: c.id,
         medicationName: c.medicationName,
         nextDate: c.nextDate,

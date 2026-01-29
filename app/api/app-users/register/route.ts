@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getClientIp } from '@/lib/auth';
 import { validateApiKey } from '@/lib/middleware';
+import { generateNextUserId } from '@/lib/user-id-generator';
 
 /**
  * Register App User Endpoint
@@ -123,9 +124,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Generate custom user ID (AHC2601, AHC2602, etc.)
+    const userId = await generateNextUserId();
+
     // Create new user (email and wpUserId are both unique at this point)
     const newUser = await prisma.appUser.create({
       data: {
+        id: userId,
         wpUserId: String(wpUserId),
         email: normalizedEmail,
         name: name || displayName,

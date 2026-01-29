@@ -62,6 +62,7 @@ export async function PUT(request: NextRequest) {
       woocommerceApiSecret,
       fcmServerKey,
       fcmProjectId,
+      customApiKey,
     } = body;
 
     // Get or create settings
@@ -90,6 +91,7 @@ export async function PUT(request: NextRequest) {
         woocommerceApiSecret: woocommerceApiSecret !== undefined ? woocommerceApiSecret : settings.woocommerceApiSecret,
         fcmServerKey: fcmServerKey !== undefined ? fcmServerKey : settings.fcmServerKey,
         fcmProjectId: fcmProjectId !== undefined ? fcmProjectId : settings.fcmProjectId,
+        customApiKey: customApiKey !== undefined ? customApiKey : settings.customApiKey,
       },
     });
 

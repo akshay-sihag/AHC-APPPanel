@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateApiKey } from '@/lib/middleware';
+import { generateNextUserId } from '@/lib/user-id-generator';
 
 // Force dynamic rendering and disable caching
 export const dynamic = 'force-dynamic';
@@ -78,8 +79,12 @@ export async function POST(request: NextRequest) {
 
     // If user doesn't exist, create one (optional - you can remove this if you want to require registration first)
     if (!appUser) {
+      // Generate custom user ID (AHC2601, AHC2602, etc.)
+      const appUserId = await generateNextUserId();
+
       appUser = await prisma.appUser.create({
         data: {
+          id: appUserId,
           wpUserId: userId.toString(),
           email: normalizedEmail,
           name: userName || null,

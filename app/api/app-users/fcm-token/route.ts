@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateApiKey } from '@/lib/middleware';
 import { prisma } from '@/lib/prisma';
+import { generateNextUserId } from '@/lib/user-id-generator';
 
 /**
  * Register or update FCM token for a user
@@ -84,9 +85,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (!user) {
+      // Generate custom user ID (AHC2601, AHC2602, etc.)
+      const userId = await generateNextUserId();
+
       // Create new user if doesn't exist by either wpUserId or email
       user = await prisma.appUser.create({
         data: {
+          id: userId,
           wpUserId,
           email: normalizedEmail,
           fcmToken,

@@ -63,8 +63,11 @@ model Settings {
   woocommerceApiSecret String?
 
   // FCM Settings for Push Notifications
-  fcmServerKey         String?  // Firebase Cloud Messaging server key
-  fcmProjectId         String?  // Firebase project ID
+  fcmServerKey String? // Firebase Cloud Messaging server key
+  fcmProjectId String? // Firebase project ID
+
+  // Custom API Key (for panel reset recovery - plain text, admin-managed)
+  customApiKey String?
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -110,55 +113,55 @@ model SecretToken {
 }
 
 model AppUser {
-  id        String   @id @default(cuid())
-  
+  id String @id // Custom ID format: AHC2601, AHC2602, etc.
+
   // WordPress user data
-  wpUserId       String   @unique // WordPress user ID
-  email          String   @unique // Email must be unique to prevent duplicate registrations
-  name           String?
-  displayName    String?
-  
+  wpUserId    String  @unique // WordPress user ID
+  email       String  @unique // Email must be unique to prevent duplicate registrations
+  name        String?
+  displayName String?
+
   // Additional user information
-  phone          String?
-  age            Int?
-  height         String?
-  feet           String?  // Height in feet (e.g., "5'10\"")
-  
+  phone  String?
+  age    Int?
+  height String?
+  feet   String? // Height in feet (e.g., "5'10\"")
+
   // Fitness data
-  weight         String?  // Current weight
-  goal           String?  // Goal weight
-  initialWeight  String?  // Initial weight when user started
-  weightSet      Boolean  @default(false) // Whether weight data has been set
-  tasksToday     Int      @default(0)
-  totalWorkouts  Int      @default(0)
-  totalCalories  Int      @default(0)
-  streak         Int      @default(0)
-  
+  weight        String? // Current weight
+  goal          String? // Goal weight
+  initialWeight String? // Initial weight when user started
+  weightSet     Boolean @default(false) // Whether weight data has been set
+  tasksToday    Int     @default(0)
+  totalWorkouts Int     @default(0)
+  totalCalories Int     @default(0)
+  streak        Int     @default(0)
+
   // Task tracking (resets daily)
-  taskStatus     Json?    // { date: "YYYY-MM-DD", tasks: [boolean, boolean, boolean] } - tracks 3 tasks completion for the day
-  
+  taskStatus Json? // { date: "YYYY-MM-DD", tasks: [boolean, boolean, boolean] } - tracks 3 tasks completion for the day
+
   // Status and tracking
-  status         String   @default("Active") // Active, Inactive
-  lastLoginAt    DateTime?
-  lastLoginIp    String?
-  loginCount     Int      @default(0)
-  
+  status      String    @default("Active") // Active, Inactive
+  lastLoginAt DateTime?
+  lastLoginIp String?
+  loginCount  Int       @default(0)
+
   // Push notifications
-  fcmToken       String?  // Firebase Cloud Messaging token for push notifications
+  fcmToken String? // Firebase Cloud Messaging token for push notifications
 
   // WooCommerce integration
-  woocommerceCustomerId  Int?     // Cached WooCommerce customer ID for faster API lookups
+  woocommerceCustomerId Int? // Cached WooCommerce customer ID for faster API lookups
 
   // Relations
-  weightLogs     WeightLog[]
-  medicationLogs MedicationLog[]
-  notificationViews NotificationView[]
-  dailyCheckIns  DailyCheckIn[]
+  weightLogs             WeightLog[]
+  medicationLogs         MedicationLog[]
+  notificationViews      NotificationView[]
+  dailyCheckIns          DailyCheckIn[]
   scheduledNotifications ScheduledNotification[]
 
   // Timestamps
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email])
   @@index([wpUserId])
@@ -173,24 +176,24 @@ model Blog {
   tags          String[] // Array of tags
   featuredImage String
   status        String   @default("published") // published, draft
-  
+
   // Timestamps
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
   @@map("blogs")
 }
 
 model MedicineCategory {
-  id        Int      @id @default(autoincrement())
-  title     String
-  tagline   String?
-  icon      String?  // Icon image path
-  
+  id      Int     @id @default(autoincrement())
+  title   String
+  tagline String?
+  icon    String? // Icon image path
+
   // Relations
   medicines Medicine[]
-  
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -200,23 +203,23 @@ model MedicineCategory {
 }
 
 model Medicine {
-  id          String   @id @default(cuid())
-  categoryId Int
+  id          String  @id @default(cuid())
+  categoryId  Int
   title       String
   tagline     String?
-  description String?  @db.Text
+  description String? @db.Text
   image       String?
   url         String?
-  price       Float?   // Price in USD
-  productType String   @default("simple") // simple, subscription
-  status      String   @default("active") // active, inactive
+  price       Float? // Price in USD
+  productType String  @default("simple") // simple, subscription
+  status      String  @default("active") // active, inactive
 
   // Relations
   category MedicineCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([categoryId])
   @@index([status])
@@ -225,23 +228,23 @@ model Medicine {
 }
 
 model WeightLog {
-  id            String   @id @default(cuid())
-  appUserId     String   // Foreign key to AppUser
-  userId        String   // Reference to app_user (wpUserId or email) - kept for backward compatibility
-  userEmail     String   // User email for easy lookup
-  userName      String?  // User name for display
-  date          DateTime @default(now())
-  weight        Float    // Weight in lbs
-  previousWeight Float?  // Previous weight for comparison
-  change        Float?   // Change in lbs (calculated)
-  changeType    String?  // 'increase', 'decrease', 'no-change'
-  
+  id             String   @id @default(cuid())
+  appUserId      String // Foreign key to AppUser
+  userId         String // Reference to app_user (wpUserId or email) - kept for backward compatibility
+  userEmail      String // User email for easy lookup
+  userName       String? // User name for display
+  date           DateTime @default(now())
+  weight         Float // Weight in lbs
+  previousWeight Float? // Previous weight for comparison
+  change         Float? // Change in lbs (calculated)
+  changeType     String? // 'increase', 'decrease', 'no-change'
+
   // Relations
-  appUser       AppUser  @relation(fields: [appUserId], references: [id], onDelete: Cascade)
-  
+  appUser AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
   // Timestamps
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([appUserId])
   @@index([userId])
@@ -251,28 +254,28 @@ model WeightLog {
 }
 
 model Notification {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   title       String
-  description String   @db.Text
-  image       String?  // Path to notification image
-  url         String?  // URL/route for mobile app navigation (e.g., /medicines, /blogs/123)
-  isActive    Boolean  @default(true)
+  description String  @db.Text
+  image       String? // Path to notification image
+  url         String? // URL/route for mobile app navigation (e.g., /medicines, /blogs/123)
+  isActive    Boolean @default(true)
 
   // Notification type and categorization
-  type        String   @default("general")  // general, order, subscription, promotion
-  icon        String?  // Icon identifier for mobile app (e.g., ic_order_completed)
-  source      String   @default("admin")    // admin, webhook, system
+  type   String  @default("general") // general, order, subscription, promotion
+  icon   String? // Icon identifier for mobile app (e.g., ic_order_completed)
+  source String  @default("admin") // admin, webhook, system
 
   // Tracking metrics
-  receiverCount Int    @default(0) // Number of users who received the push notification
-  viewCount     Int    @default(0) // Number of users who viewed/opened the notification
+  receiverCount Int @default(0) // Number of users who received the push notification
+  viewCount     Int @default(0) // Number of users who viewed/opened the notification
 
   // Relations
-  views         NotificationView[]
+  views NotificationView[]
 
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([isActive])
   @@index([createdAt])
@@ -282,27 +285,27 @@ model Notification {
 }
 
 model WebhookLog {
-  id            String   @id @default(cuid())
-  source        String   // woocommerce, stripe, etc.
-  event         String   // order_status, subscription_status
-  resourceId    String   // Order ID, Subscription ID
-  status        String   // Status received (completed, cancelled, etc.)
-  customerEmail String?  // Customer email for tracking
+  id            String  @id @default(cuid())
+  source        String // woocommerce, stripe, etc.
+  event         String // order_status, subscription_status
+  resourceId    String // Order ID, Subscription ID
+  status        String // Status received (completed, cancelled, etc.)
+  customerEmail String? // Customer email for tracking
 
   // Notification details
   notificationTitle String?
   notificationBody  String?
 
   // Push notification result
-  pushSent      Boolean  @default(false)
-  pushSuccess   Boolean  @default(false)
-  pushError     String?
+  pushSent    Boolean @default(false)
+  pushSuccess Boolean @default(false)
+  pushError   String?
 
   // Raw data for debugging
-  payload       Json?    // Raw webhook payload
+  payload Json? // Raw webhook payload
 
   // Timestamps
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([source, event])
   @@index([customerEmail])
@@ -312,20 +315,20 @@ model WebhookLog {
 }
 
 model NotificationView {
-  id             String      @id @default(cuid())
-  notificationId String      // Foreign key to Notification
-  appUserId      String?     // Foreign key to AppUser (optional for anonymous tracking)
-  wpUserId       String?     // WordPress user ID (if appUserId not available)
-  userEmail      String?     // User email (for tracking)
-  viewedAt       DateTime    @default(now())
-  
+  id             String   @id @default(cuid())
+  notificationId String // Foreign key to Notification
+  appUserId      String? // Foreign key to AppUser (optional for anonymous tracking)
+  wpUserId       String? // WordPress user ID (if appUserId not available)
+  userEmail      String? // User email (for tracking)
+  viewedAt       DateTime @default(now())
+
   // Relations
-  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
-  appUser        AppUser?    @relation(fields: [appUserId], references: [id], onDelete: SetNull)
-  
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  appUser      AppUser?     @relation(fields: [appUserId], references: [id], onDelete: SetNull)
+
   // Timestamps
-  createdAt      DateTime    @default(now())
-  
+  createdAt DateTime @default(now())
+
   @@unique([notificationId, appUserId]) // Prevent duplicate views from same user
   @@index([notificationId])
   @@index([appUserId])
@@ -334,35 +337,35 @@ model NotificationView {
 }
 
 model MedicationLog {
-  id          String   @id @default(cuid())
-  appUserId   String   // Foreign key to AppUser
-  medicineId  String?  // Optional reference to Medicine
-  medicineName String  // Name of the medicine
-  dosage      String   // Dosage information (e.g., "500mg", "1 tablet")
-  takenAt     DateTime @default(now()) // When the medicine was taken
-  
+  id           String   @id @default(cuid())
+  appUserId    String // Foreign key to AppUser
+  medicineId   String? // Optional reference to Medicine
+  medicineName String // Name of the medicine
+  dosage       String // Dosage information (e.g., "500mg", "1 tablet")
+  takenAt      DateTime @default(now()) // When the medicine was taken
+
   // Relations
-  appUser     AppUser  @relation(fields: [appUserId], references: [id], onDelete: Cascade)
-  
+  appUser AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([appUserId])
   @@index([takenAt])
   @@map("medication_logs")
 }
 
 model FAQ {
-  id          String   @id @default(cuid())
-  question    String
-  answer      String   @db.Text
-  order       Int      @default(0) // For custom ordering
-  isActive    Boolean  @default(true)
+  id       String  @id @default(cuid())
+  question String
+  answer   String  @db.Text
+  order    Int     @default(0) // For custom ordering
+  isActive Boolean @default(true)
 
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([isActive])
   @@index([order])
@@ -370,25 +373,25 @@ model FAQ {
 }
 
 model PushNotificationLog {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   recipientEmail    String?
   recipientWpUserId String?
-  recipientFcmToken String?  // Truncated for privacy
-  recipientCount    Int      @default(1)
+  recipientFcmToken String? // Truncated for privacy
+  recipientCount    Int       @default(1)
   title             String
-  body              String   @db.Text
+  body              String    @db.Text
   imageUrl          String?
   dataPayload       Json?
-  source            String   // 'admin' | 'webhook' | 'system'
-  type              String   @default("general")
-  sourceId          String?  // Reference to notification/order/subscription ID
-  status            String   @default("pending") // 'pending' | 'sent' | 'failed' | 'partial'
-  successCount      Int      @default(0)
-  failureCount      Int      @default(0)
-  errorMessage      String?  @db.Text
+  source            String // 'admin' | 'webhook' | 'system'
+  type              String    @default("general")
+  sourceId          String? // Reference to notification/order/subscription ID
+  status            String    @default("pending") // 'pending' | 'sent' | 'failed' | 'partial'
+  successCount      Int       @default(0)
+  failureCount      Int       @default(0)
+  errorMessage      String?   @db.Text
   errorCode         String?
   fcmMessageId      String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
   sentAt            DateTime?
 
   @@index([source])
@@ -399,22 +402,22 @@ model PushNotificationLog {
 }
 
 model DailyCheckIn {
-  id             String   @id @default(cuid())
-  appUserId      String   // Foreign key to AppUser
-  date           String   // Date in YYYY-MM-DD format for easy daily checking
-  buttonType     String   @default("default") // Type of button pressed (for multiple buttons)
-  medicationName String   @default("default") // Medication name for the check-in
-  nextDate       String?  // Next scheduled date in YYYY-MM-DD format for reminder notifications
+  id             String  @id @default(cuid())
+  appUserId      String // Foreign key to AppUser
+  date           String // Date in YYYY-MM-DD format for easy daily checking
+  buttonType     String  @default("default") // Type of button pressed (for multiple buttons)
+  medicationName String  @default("default") // Medication name for the check-in
+  nextDate       String? // Next scheduled date in YYYY-MM-DD format for reminder notifications
 
   // Metadata
-  deviceInfo  String?  // Optional device info
-  ipAddress   String?  // Optional IP address
+  deviceInfo String? // Optional device info
+  ipAddress  String? // Optional IP address
 
   // Relations
-  appUser     AppUser  @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+  appUser AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
 
   // Timestamps
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   // Unique constraint: one check-in per user per day per medication
   @@unique([appUserId, date, medicationName])
@@ -426,28 +429,28 @@ model DailyCheckIn {
 }
 
 model ScheduledNotification {
-  id             String   @id @default(cuid())
-  appUserId      String   // Foreign key to AppUser
-  checkInId      String   // Reference to the DailyCheckIn that created this
-  medicationName String   // Medication name for the notification
-  scheduledDate  String   // Date to send notification (YYYY-MM-DD)
-  scheduledType  String   // 'immediate' | 'day_before' | 'on_date'
+  id             String @id @default(cuid())
+  appUserId      String // Foreign key to AppUser
+  checkInId      String // Reference to the DailyCheckIn that created this
+  medicationName String // Medication name for the notification
+  scheduledDate  String // Date to send notification (YYYY-MM-DD)
+  scheduledType  String // 'immediate' | 'day_before' | 'on_date'
 
   // Notification content
-  title          String
-  body           String
+  title String
+  body  String
 
   // Status tracking
-  status         String   @default("pending") // 'pending' | 'sent' | 'failed' | 'cancelled'
-  sentAt         DateTime?
-  errorMessage   String?
+  status       String    @default("pending") // 'pending' | 'sent' | 'failed' | 'cancelled'
+  sentAt       DateTime?
+  errorMessage String?
 
   // Relations
-  appUser        AppUser  @relation(fields: [appUserId], references: [id], onDelete: Cascade)
+  appUser AppUser @relation(fields: [appUserId], references: [id], onDelete: Cascade)
 
   // Timestamps
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([appUserId])
   @@index([scheduledDate])
