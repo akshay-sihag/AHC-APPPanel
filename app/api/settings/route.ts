@@ -15,23 +15,27 @@ export async function GET() {
       );
     }
 
-    // Get or create default settings
-    let settings = await prisma.settings.findUnique({
+    // Use upsert to get or create default settings atomically
+    const settings = await prisma.settings.upsert({
       where: { id: 'settings' },
+      update: {}, // No updates, just return existing
+      create: {
+        id: 'settings',
+      },
     });
 
-    if (!settings) {
-      // Create default settings
-      settings = await prisma.settings.create({
-        data: {
-          id: 'settings',
-        },
-      });
+    return NextResponse.json(settings);
+  } catch (error: any) {
+    console.error('Get settings error:', error);
+
+    // Check if it's a schema/column error
+    if (error?.message?.includes('Unknown field') || error?.message?.includes('column')) {
+      return NextResponse.json(
+        { error: 'Database schema needs to be updated. Please run: npx prisma db push' },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json(settings);
-  } catch (error) {
-    console.error('Get settings error:', error);
     return NextResponse.json(
       { error: 'An error occurred while fetching settings' },
       { status: 500 }
@@ -67,35 +71,28 @@ export async function PUT(request: NextRequest) {
       maintenanceMessage,
     } = body;
 
-    // Get or create settings
-    let settings = await prisma.settings.findUnique({
-      where: { id: 'settings' },
-    });
+    // Build update data object - only include fields that are provided
+    const updateData: any = {};
+    if (timezone !== undefined) updateData.timezone = timezone;
+    if (sessionTimeout !== undefined) updateData.sessionTimeout = sessionTimeout;
+    if (requireStrongPassword !== undefined) updateData.requireStrongPassword = requireStrongPassword;
+    if (enableTwoFactor !== undefined) updateData.enableTwoFactor = enableTwoFactor;
+    if (woocommerceApiUrl !== undefined) updateData.woocommerceApiUrl = woocommerceApiUrl;
+    if (woocommerceApiKey !== undefined) updateData.woocommerceApiKey = woocommerceApiKey;
+    if (woocommerceApiSecret !== undefined) updateData.woocommerceApiSecret = woocommerceApiSecret;
+    if (fcmServerKey !== undefined) updateData.fcmServerKey = fcmServerKey;
+    if (fcmProjectId !== undefined) updateData.fcmProjectId = fcmProjectId;
+    if (customApiKey !== undefined) updateData.customApiKey = customApiKey;
+    if (maintenanceMode !== undefined) updateData.maintenanceMode = maintenanceMode;
+    if (maintenanceMessage !== undefined) updateData.maintenanceMessage = maintenanceMessage;
 
-    if (!settings) {
-      settings = await prisma.settings.create({
-        data: {
-          id: 'settings',
-        },
-      });
-    }
-
-    // Update settings (adminEmail is now user-specific, not stored in Settings)
-    const updatedSettings = await prisma.settings.update({
+    // Use upsert to create or update settings atomically
+    const updatedSettings = await prisma.settings.upsert({
       where: { id: 'settings' },
-      data: {
-        timezone: timezone !== undefined ? timezone : settings.timezone,
-        sessionTimeout: sessionTimeout !== undefined ? sessionTimeout : settings.sessionTimeout,
-        requireStrongPassword: requireStrongPassword !== undefined ? requireStrongPassword : settings.requireStrongPassword,
-        enableTwoFactor: enableTwoFactor !== undefined ? enableTwoFactor : settings.enableTwoFactor,
-        woocommerceApiUrl: woocommerceApiUrl !== undefined ? woocommerceApiUrl : settings.woocommerceApiUrl,
-        woocommerceApiKey: woocommerceApiKey !== undefined ? woocommerceApiKey : settings.woocommerceApiKey,
-        woocommerceApiSecret: woocommerceApiSecret !== undefined ? woocommerceApiSecret : settings.woocommerceApiSecret,
-        fcmServerKey: fcmServerKey !== undefined ? fcmServerKey : settings.fcmServerKey,
-        fcmProjectId: fcmProjectId !== undefined ? fcmProjectId : settings.fcmProjectId,
-        customApiKey: customApiKey !== undefined ? customApiKey : settings.customApiKey,
-        maintenanceMode: maintenanceMode !== undefined ? maintenanceMode : settings.maintenanceMode,
-        maintenanceMessage: maintenanceMessage !== undefined ? maintenanceMessage : settings.maintenanceMessage,
+      update: updateData,
+      create: {
+        id: 'settings',
+        ...updateData,
       },
     });
 
@@ -104,10 +101,27 @@ export async function PUT(request: NextRequest) {
       message: 'Settings updated successfully',
       settings: updatedSettings,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update settings error:', error);
+
+    // Check for specific Prisma errors
+    if (error?.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'Settings conflict - please refresh and try again' },
+        { status: 409 }
+      );
+    }
+
+    // Check if it's a schema/column error
+    if (error?.message?.includes('Unknown field') || error?.message?.includes('column')) {
+      return NextResponse.json(
+        { error: 'Database schema needs to be updated. Please run: npx prisma db push' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
-      { error: 'An error occurred while updating settings' },
+      { error: 'An error occurred while updating settings. Please try again.' },
       { status: 500 }
     );
   }
