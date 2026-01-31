@@ -12,7 +12,6 @@ type User = {
   lastLogin: string;
   weight: string;
   goal: string;
-  tasksToday: number;
   joinDate: string;
   phone?: string;
   age?: number;
@@ -34,7 +33,6 @@ export default function UsersPage() {
   const [total, setTotal] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
   const [inactiveCount, setInactiveCount] = useState(0);
-  const [avgTasksToday, setAvgTasksToday] = useState('0.0');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -84,17 +82,11 @@ export default function UsersPage() {
         setTotal(data.stats.total || 0);
         setActiveCount(data.stats.active || 0);
         setInactiveCount(data.stats.inactive || 0);
-        setAvgTasksToday(data.stats.avgTasksToday || '0.0');
       } else {
         // Fallback to calculating from current page
         setTotal(data.pagination?.total || 0);
         setActiveCount(fetchedUsers.filter((u: User) => u.status === 'Active').length);
         setInactiveCount(fetchedUsers.filter((u: User) => u.status === 'Inactive').length);
-        setAvgTasksToday(
-          fetchedUsers.length > 0
-            ? (fetchedUsers.reduce((sum: number, u: User) => sum + u.tasksToday, 0) / fetchedUsers.length).toFixed(1)
-            : '0.0'
-        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -238,7 +230,7 @@ export default function UsersPage() {
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
           <p className="text-sm text-[#7895b3] mb-1">Total Users</p>
           <p className="text-2xl font-bold text-[#435970]">{total}</p>
@@ -250,10 +242,6 @@ export default function UsersPage() {
         <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
           <p className="text-sm text-[#7895b3] mb-1">Inactive</p>
           <p className="text-2xl font-bold text-[#435970]">{inactiveCount}</p>
-        </div>
-        <div className="bg-white rounded-lg p-4 border border-[#dfedfb]">
-          <p className="text-sm text-[#7895b3] mb-1">Avg Tasks/Day</p>
-          <p className="text-2xl font-bold text-[#435970]">{avgTasksToday}</p>
         </div>
       </div>
 
@@ -273,9 +261,6 @@ export default function UsersPage() {
                   Weight / Goal
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
-                  Tasks Today
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
                   Last Login
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
@@ -289,7 +274,7 @@ export default function UsersPage() {
             <tbody className="divide-y divide-[#dfedfb]">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-[#7895b3]">
+                  <td colSpan={6} className="px-6 py-8 text-center text-[#7895b3]">
                     {loading ? 'Loading...' : 'No users found'}
                   </td>
                 </tr>
@@ -324,17 +309,6 @@ export default function UsersPage() {
                       <span className="text-[#7895b3]">
                         {user.goal !== 'N/A' ? ` / ${user.goal} lbs` : ' / N/A'}
                       </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <span className="text-sm font-semibold text-[#435970]">{user.tasksToday}</span>
-                      <div className="ml-2 w-16 bg-[#dfedfb] rounded-full h-2">
-                        <div
-                          className="bg-[#7895b3] h-2 rounded-full"
-                          style={{ width: `${(user.tasksToday / 6) * 100}%` }}
-                        ></div>
-                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-[#7895b3]">

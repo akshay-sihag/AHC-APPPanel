@@ -14,7 +14,6 @@ type User = {
   weight: string;
   initialWeight: string;
   goal: string;
-  tasksToday: number;
   joinDate: string;
   phone?: string;
   age?: number;
@@ -344,35 +343,12 @@ export default function UserDetailsPage() {
         </div>
       </div>
 
-      {/* Activity & Task Status */}
+      {/* Activity & Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Activity Information */}
         <div className="bg-white rounded-lg border border-[#dfedfb] p-6">
           <h5 className="text-xl font-semibold text-[#435970] mb-4">Activity Information</h5>
           <div className="grid grid-cols-1 gap-4">
-            <div className="bg-[#dfedfb]/20 rounded-lg p-4 border border-[#dfedfb]">
-              <p className="text-sm text-[#7895b3] mb-1">Tasks Today</p>
-              <p className="text-3xl font-bold text-[#435970]">{user.tasksToday}</p>
-              {user.taskStatus && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-[#7895b3]">Task Status ({user.taskStatus.date}):</p>
-                  <div className="flex gap-2">
-                    {user.taskStatus.tasks.map((completed, index) => (
-                      <div
-                        key={index}
-                        className={`flex-1 h-2 rounded-full ${
-                          completed ? 'bg-green-500' : 'bg-gray-300'
-                        }`}
-                        title={`Task ${index + 1}: ${completed ? 'Completed' : 'Pending'}`}
-                      ></div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-[#7895b3] mt-1">
-                    {user.taskStatus.tasks.filter(Boolean).length} of 3 tasks completed
-                  </p>
-                </div>
-              )}
-            </div>
             <div className="bg-[#dfedfb]/20 rounded-lg p-4 border border-[#dfedfb]">
               <p className="text-sm text-[#7895b3] mb-1">Last Login</p>
               <p className="text-base font-medium text-[#435970]">{user.lastLogin}</p>

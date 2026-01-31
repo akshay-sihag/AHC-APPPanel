@@ -37,10 +37,6 @@ type DashboardData = {
     uniqueUsers: number;
     avgWeightLoss: number;
   };
-  tasks: {
-    completedToday: number;
-    avgPerUser: number;
-  };
 };
 
 const COLORS = ['#435970', '#7895b3', '#dfedfb', '#93b7d8'];
@@ -103,15 +99,6 @@ export default function DashboardPage() {
           })
           .slice(0, 5);
 
-        // Calculate tasks
-        const completedTasks = usersData.users.reduce(
-          (sum: number, user: any) => sum + (user.tasksToday || 0),
-          0
-        );
-        const avgTasksPerUser = usersData.stats.total > 0 
-          ? (completedTasks / usersData.stats.total).toFixed(1) 
-          : '0.0';
-
         // Count notifications by status
         const activeNotifications = notificationsData.filter((n: any) => n.isActive).length;
         const totalReceivers = notificationsData.reduce((sum: number, n: any) => sum + (n.receiverCount || 0), 0);
@@ -147,10 +134,6 @@ export default function DashboardPage() {
             today: weightLogsData.stats.todayLogs,
             uniqueUsers: weightLogsData.stats.uniqueUsers,
             avgWeightLoss: weightLogsData.stats.avgWeightLoss,
-          },
-          tasks: {
-            completedToday: completedTasks,
-            avgPerUser: parseFloat(avgTasksPerUser),
           },
         });
 
@@ -227,7 +210,6 @@ export default function DashboardPage() {
 
   const engagementData = [
     { name: 'Weight Logs', value: data.weightLogs.total },
-    { name: 'Tasks Today', value: data.tasks.completedToday },
     { name: 'Notification Views', value: data.notifications.totalViews },
   ];
 
@@ -529,11 +511,6 @@ export default function DashboardPage() {
         <div className="bg-white rounded-lg p-6 border border-[#dfedfb]">
           <h3 className="text-lg font-bold text-[#435970] mb-4">Today&apos;s Activity</h3>
           <div className="space-y-4">
-            <div className="p-4 bg-gradient-to-br from-[#435970] to-[#7895b3] rounded-lg text-white">
-              <p className="text-sm opacity-90 mb-1">Daily Tasks Completed</p>
-              <p className="text-3xl font-bold">{data.tasks.completedToday}</p>
-              <p className="text-xs opacity-75 mt-1">{data.tasks.avgPerUser} avg per user</p>
-            </div>
             <div className="p-4 bg-blue-50 rounded-lg">
               <p className="text-sm text-blue-700 mb-1">Weight Logs Today</p>
               <p className="text-3xl font-bold text-blue-700">{data.weightLogs.today}</p>

@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/auto-backup",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/process-scheduled-notifications",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

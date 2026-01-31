@@ -108,6 +108,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Not an order event' });
     }
 
+    // Skip notifications for certain statuses (approved, cancelled)
+    const SKIP_NOTIFICATION_STATUSES = ['approved', 'cancelled'];
+    if (SKIP_NOTIFICATION_STATUSES.includes(orderStatus.toLowerCase())) {
+      console.log('Skipping notification for status:', orderStatus);
+      return NextResponse.json({
+        success: true,
+        message: `Notification skipped for status: ${orderStatus}`,
+        orderId,
+        orderStatus,
+        skipped: true,
+      });
+    }
+
     // Deduplication: Check if we've already processed this exact order+status recently (within 5 minutes)
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     const existingLog = await prisma.webhookLog.findFirst({

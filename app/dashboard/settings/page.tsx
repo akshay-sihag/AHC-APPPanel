@@ -591,7 +591,7 @@ export default function SettingsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMode, setImportMode] = useState<'merge' | 'replace' | 'skip-existing'>('merge');
-  const [selectedEntities, setSelectedEntities] = useState<string[]>(['medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications']);
+  const [selectedEntities, setSelectedEntities] = useState<string[]>(['medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications', 'users', 'weight-logs', 'medication-logs', 'daily-checkins']);
   const [importResult, setImportResult] = useState<any>(null);
 
   // Data Reset States
@@ -1351,7 +1351,7 @@ export default function SettingsPage() {
           <div className="bg-white rounded-lg border border-[#dfedfb] p-6">
             <h4 className="text-lg font-semibold text-[#435970] mb-4">Backup & Restore</h4>
             <p className="text-sm text-[#7895b3] mb-6">
-              Export and import data for medicines, medicine categories, blogs, FAQs, and notifications.
+              Export and import all data including medicines, blogs, users, fitness information, weight logs, medication logs, and more. No file size restrictions.
             </p>
 
             {/* Export Section */}
@@ -1360,15 +1360,25 @@ export default function SettingsPage() {
               <p className="text-xs text-[#7895b3] mb-4">Select which entities to export:</p>
               
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                {['medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications'].map((entity) => (
-                  <label key={entity} className="flex items-center gap-2 p-3 border border-[#dfedfb] rounded-lg cursor-pointer hover:bg-[#dfedfb]/30 transition-colors">
+                {[
+                  { key: 'medicines', label: 'Medicines' },
+                  { key: 'medicine-categories', label: 'Medicine Categories' },
+                  { key: 'blogs', label: 'Blogs (Featured Content)' },
+                  { key: 'faqs', label: 'FAQs' },
+                  { key: 'notifications', label: 'Notifications' },
+                  { key: 'users', label: 'Users & Fitness Info' },
+                  { key: 'weight-logs', label: 'Weight Logs' },
+                  { key: 'medication-logs', label: 'Medication Logs' },
+                  { key: 'daily-checkins', label: 'Daily Check-ins' },
+                ].map((entity) => (
+                  <label key={entity.key} className="flex items-center gap-2 p-3 border border-[#dfedfb] rounded-lg cursor-pointer hover:bg-[#dfedfb]/30 transition-colors">
                     <input
                       type="checkbox"
-                      checked={selectedEntities.includes(entity)}
-                      onChange={() => toggleEntity(entity)}
+                      checked={selectedEntities.includes(entity.key)}
+                      onChange={() => toggleEntity(entity.key)}
                       className="w-4 h-4 text-[#435970] border-[#dfedfb] rounded focus:ring-[#7895b3] focus:ring-2"
                     />
-                    <span className="text-sm text-[#435970] capitalize">{entity.replace('-', ' ')}</span>
+                    <span className="text-sm text-[#435970]">{entity.label}</span>
                   </label>
                 ))}
               </div>
@@ -1509,10 +1519,11 @@ export default function SettingsPage() {
             <div className="mt-6 bg-[#dfedfb]/50 rounded-lg p-4">
               <p className="text-sm text-[#435970] font-medium mb-2">Backup & Restore Information:</p>
               <ul className="text-xs text-[#7895b3] list-disc list-inside space-y-1">
-                <li>Backups include all data for selected entities (medicines, categories, blogs, FAQs, notifications)</li>
-                <li>Export creates a JSON file that can be imported later</li>
+                <li>Backups include: medicines, categories, blogs, FAQs, notifications, users, weight logs, medication logs, and daily check-ins</li>
+                <li>Export creates a JSON file (no size limit) that can be imported later</li>
                 <li>Import modes: Merge (update/add), Replace (delete all first), Skip Existing (only new)</li>
-                <li>Regular backups are recommended to prevent data loss</li>
+                <li>Automatic backups run daily at 6 AM and are stored in /backup/json-ahc/ (keeps last 2 days)</li>
+                <li>Manual backups are recommended before major changes</li>
               </ul>
             </div>
           </div>
