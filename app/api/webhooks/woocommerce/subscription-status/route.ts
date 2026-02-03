@@ -109,9 +109,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Not a subscription event' });
     }
 
-    // Skip notifications for certain statuses (approved, cancelled)
-    const SKIP_NOTIFICATION_STATUSES = ['approved', 'cancelled'];
-    if (SKIP_NOTIFICATION_STATUSES.includes(subscriptionStatus.toLowerCase())) {
+    // Only send notifications for specific subscription statuses
+    const ALLOWED_SUBSCRIPTION_STATUSES = ['active', 'on-hold', 'cancelled', 'expired'];
+    if (!ALLOWED_SUBSCRIPTION_STATUSES.includes(subscriptionStatus.toLowerCase())) {
       console.log('Skipping notification for status:', subscriptionStatus);
       return NextResponse.json({
         success: true,
