@@ -108,9 +108,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Not an order event' });
     }
 
-    // Skip notifications for certain statuses (approved, cancelled)
-    const SKIP_NOTIFICATION_STATUSES = ['approved', 'cancelled'];
-    if (SKIP_NOTIFICATION_STATUSES.includes(orderStatus.toLowerCase())) {
+    // Only send notifications for processing and completed statuses
+    const ALLOWED_NOTIFICATION_STATUSES = ['processing', 'completed'];
+    if (!ALLOWED_NOTIFICATION_STATUSES.includes(orderStatus.toLowerCase())) {
       console.log('Skipping notification for status:', orderStatus);
       return NextResponse.json({
         success: true,
