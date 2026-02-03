@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
     } catch (settingsError) {
       console.log('Failed to fetch custom notification settings, using defaults');
     }
-    const url = orderStatus === 'processing' ? '/my-plan' : `/orders/${orderId}`;
+    const url = orderStatus === 'processing' ? `/my-plan/${orderId}` : `/orders/${orderId}`;
 
     console.log('Notification:', { title, message, icon });
 
