@@ -1,0 +1,420 @@
+'use client';
+
+import { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import ConfirmModal from '@/app/components/ConfirmModal';
+import NotificationModal from '@/app/components/NotificationModal';
+
+type BugReport = {
+  id: string;
+  title: string;
+  description: string;
+  image: string | null;
+  status: string;
+  platform: string | null;
+  osVersion: string | null;
+  deviceName: string | null;
+  appVersion: string | null;
+  reporterName: string | null;
+  reporterEmail: string | null;
+  appUserId: string | null;
+  appUser: {
+    id: string;
+    name: string | null;
+    displayName: string | null;
+    email: string;
+    phone: string | null;
+    status: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export default function BugReportDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const router = useRouter();
+  const [bugReport, setBugReport] = useState<BugReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+
+  // Delete confirmation
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Image modal
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+
+  // Notification
+  const [notification, setNotification] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'success' | 'error' | 'info' | 'warning';
+  }>({ isOpen: false, title: '', message: '', type: 'info' });
+
+  const fetchBugReport = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/bug-reports/${id}`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBugReport(data.bugReport);
+      } else if (response.status === 404) {
+        router.push('/dashboard/bug-reports');
+      }
+    } catch (error) {
+      console.error('Error fetching bug report:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBugReport();
+  }, [id]);
+
+  const handleStatusToggle = async () => {
+    if (!bugReport) return;
+    const newStatus = bugReport.status === 'open' ? 'resolved' : 'open';
+    setUpdating(true);
+
+    try {
+      const response = await fetch(`/api/bug-reports/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (response.ok) {
+        setBugReport({ ...bugReport, status: newStatus });
+        setNotification({
+          isOpen: true,
+          title: 'Status Updated',
+          message: `Bug report marked as ${newStatus}`,
+          type: 'success',
+        });
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      setNotification({
+        isOpen: true,
+        title: 'Error',
+        message: 'Failed to update status',
+        type: 'error',
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/bug-reports/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        router.push('/dashboard/bug-reports');
+      } else {
+        const data = await response.json();
+        setNotification({
+          isOpen: true,
+          title: 'Error',
+          message: data.error || 'Failed to delete bug report',
+          type: 'error',
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting bug report:', error);
+      setNotification({
+        isOpen: true,
+        title: 'Error',
+        message: 'Failed to delete bug report',
+        type: 'error',
+      });
+    } finally {
+      setDeleting(false);
+      setDeleteModalOpen(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#435970]"></div>
+      </div>
+    );
+  }
+
+  if (!bugReport) {
+    return (
+      <div className="text-center py-20">
+        <h2 className="text-xl font-semibold text-[#435970]">Bug report not found</h2>
+        <Link href="/dashboard/bug-reports" className="text-[#7895b3] hover:underline mt-2 inline-block">
+          Back to Bug Reports
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard/bug-reports"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <svg className="w-5 h-5 text-[#435970]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-[#435970]">{bugReport.title}</h1>
+            <p className="text-[#7895b3] text-sm">
+              Submitted on {new Date(bugReport.createdAt).toLocaleDateString()} at{' '}
+              {new Date(bugReport.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleStatusToggle}
+            disabled={updating}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 shadow-lg disabled:opacity-50 ${
+              bugReport.status === 'open'
+                ? 'bg-green-600 text-white hover:bg-green-700 shadow-green-600/20'
+                : 'bg-orange-500 text-white hover:bg-orange-600 shadow-orange-500/20'
+            }`}
+          >
+            {updating ? (
+              <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : bugReport.status === 'open' ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            {bugReport.status === 'open' ? 'Mark as Resolved' : 'Reopen'}
+          </button>
+          <button
+            onClick={() => setDeleteModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-300 font-semibold text-sm shadow-lg shadow-red-500/20"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      </div>
+
+      {/* Status Badge */}
+      <div className="flex items-center gap-3">
+        <span
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full ${
+            bugReport.status === 'open'
+              ? 'bg-orange-100 text-orange-700'
+              : 'bg-green-100 text-green-700'
+          }`}
+        >
+          <span className={`w-2 h-2 rounded-full ${
+            bugReport.status === 'open' ? 'bg-orange-500' : 'bg-green-500'
+          }`}></span>
+          {bugReport.status === 'open' ? 'Open' : 'Resolved'}
+        </span>
+        {bugReport.updatedAt !== bugReport.createdAt && (
+          <span className="text-xs text-[#7895b3]">
+            Last updated: {new Date(bugReport.updatedAt).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Description */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <h2 className="text-lg font-semibold text-[#435970] mb-4">Description</h2>
+            <p className="text-[#435970] whitespace-pre-wrap leading-relaxed">{bugReport.description}</p>
+          </div>
+
+          {/* Screenshot */}
+          {bugReport.image && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <h2 className="text-lg font-semibold text-[#435970] mb-4">Screenshot</h2>
+              <div
+                className="cursor-pointer rounded-xl overflow-hidden border border-gray-200 inline-block"
+                onClick={() => setImageModalOpen(true)}
+              >
+                <img
+                  src={bugReport.image}
+                  alt="Bug report screenshot"
+                  className="max-w-full max-h-[400px] object-contain"
+                />
+              </div>
+              <p className="text-xs text-[#7895b3] mt-2">Click image to enlarge</p>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar Info */}
+        <div className="space-y-6">
+          {/* Reporter Info */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <h2 className="text-lg font-semibold text-[#435970] mb-4">Reporter</h2>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-[#7895b3] uppercase tracking-wider">Name</p>
+                <p className="text-sm font-medium text-[#435970]">
+                  {bugReport.reporterName || bugReport.appUser?.displayName || bugReport.appUser?.name || '-'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-[#7895b3] uppercase tracking-wider">Email</p>
+                <p className="text-sm font-medium text-[#435970]">
+                  {bugReport.reporterEmail || bugReport.appUser?.email || '-'}
+                </p>
+              </div>
+              {bugReport.appUser && (
+                <>
+                  <div>
+                    <p className="text-xs text-[#7895b3] uppercase tracking-wider">User Status</p>
+                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full mt-1 ${
+                      bugReport.appUser.status === 'Active'
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {bugReport.appUser.status}
+                    </span>
+                  </div>
+                  <Link
+                    href={`/dashboard/users?search=${encodeURIComponent(bugReport.appUser.email)}`}
+                    className="inline-flex items-center gap-1.5 text-sm text-[#435970] hover:text-[#7895b3] font-medium transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    View User Profile
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Device Info */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <h2 className="text-lg font-semibold text-[#435970] mb-4">Device Info</h2>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-[#7895b3] uppercase tracking-wider">Platform</p>
+                <p className="text-sm font-medium text-[#435970]">
+                  {bugReport.platform ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      {bugReport.platform === 'ios' ? (
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                      ) : (
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24c-1.44-.59-3.03-.94-4.73-.94s-3.29.35-4.73.94L5.19 5.67c-.18-.28-.54-.37-.83-.22-.3.16-.42.54-.26.85L5.94 9.48C3.6 10.8 2 13.16 2 16h20c0-2.84-1.6-5.2-3.94-6.52zM7 13c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm10 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg>
+                      )}
+                      {bugReport.platform === 'ios' ? 'iOS' : 'Android'}
+                    </span>
+                  ) : '-'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-[#7895b3] uppercase tracking-wider">OS Version</p>
+                <p className="text-sm font-medium text-[#435970]">{bugReport.osVersion || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#7895b3] uppercase tracking-wider">Device</p>
+                <p className="text-sm font-medium text-[#435970]">{bugReport.deviceName || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#7895b3] uppercase tracking-wider">App Version</p>
+                <p className="text-sm font-medium text-[#435970]">{bugReport.appVersion ? `v${bugReport.appVersion}` : '-'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Timestamps */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <h2 className="text-lg font-semibold text-[#435970] mb-4">Timestamps</h2>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-[#7895b3] uppercase tracking-wider">Created</p>
+                <p className="text-sm font-medium text-[#435970]">
+                  {new Date(bugReport.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-[#7895b3] uppercase tracking-wider">Last Updated</p>
+                <p className="text-sm font-medium text-[#435970]">
+                  {new Date(bugReport.updatedAt).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Image Modal */}
+      {imageModalOpen && bugReport.image && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          onClick={() => setImageModalOpen(false)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]">
+            <button
+              onClick={() => setImageModalOpen(false)}
+              className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={bugReport.image}
+              alt="Bug report screenshot"
+              className="max-w-full max-h-[85vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Delete Bug Report"
+        message={`Are you sure you want to delete "${bugReport.title}"? This action cannot be undone.`}
+        confirmText="Delete"
+        onConfirm={handleDelete}
+        onClose={() => setDeleteModalOpen(false)}
+        isLoading={deleting}
+      />
+
+      {/* Notification Modal */}
+      <NotificationModal
+        isOpen={notification.isOpen}
+        title={notification.title}
+        message={notification.message}
+        type={notification.type}
+        onClose={() => setNotification({ ...notification, isOpen: false })}
+      />
+    </div>
+  );
+}

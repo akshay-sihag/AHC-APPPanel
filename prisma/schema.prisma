@@ -172,6 +172,7 @@ model AppUser {
   notificationViews      NotificationView[]
   dailyCheckIns          DailyCheckIn[]
   scheduledNotifications ScheduledNotification[]
+  bugReports             BugReport[]
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -497,4 +498,34 @@ model ScheduledNotification {
   @@index([status])
   @@index([scheduledType])
   @@map("scheduled_notifications")
+}
+
+model BugReport {
+  id          String   @id @default(cuid())
+  appUserId   String?
+  title       String
+  description String   @db.Text
+  image       String?          // Cloudinary URL
+  status      String   @default("open")  // "open" | "resolved"
+
+  // Device & OS info (sent from app)
+  platform    String?          // "ios" | "android"
+  osVersion   String?          // e.g. "iOS 17.2", "Android 14"
+  deviceName  String?          // e.g. "iPhone 15", "Samsung Galaxy S24"
+  appVersion  String?          // e.g. "1.2.3"
+
+  // Reporter info (captured from app user)
+  reporterName  String?
+  reporterEmail String?
+
+  // Relations
+  appUser AppUser? @relation(fields: [appUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([appUserId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("bug_reports")
 }
