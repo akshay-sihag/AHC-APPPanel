@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
       appVersion,
       wpUserId,
       email,
+      name,
     } = body;
 
     // Validate required fields
@@ -148,7 +149,7 @@ export async function POST(request: NextRequest) {
         deviceName: deviceName || null,
         appVersion: appVersion || null,
         appUserId: appUser?.id || null,
-        reporterName: appUser?.displayName || appUser?.name || null,
+        reporterName: appUser?.displayName || appUser?.name || name || null,
         reporterEmail: appUser?.email || email || null,
       },
     });
@@ -160,7 +161,15 @@ export async function POST(request: NextRequest) {
         bugReport: {
           id: bugReport.id,
           title: bugReport.title,
+          description: bugReport.description,
+          image: bugReport.image,
           status: bugReport.status,
+          platform: bugReport.platform,
+          osVersion: bugReport.osVersion,
+          deviceName: bugReport.deviceName,
+          appVersion: bugReport.appVersion,
+          reporterName: bugReport.reporterName,
+          reporterEmail: bugReport.reporterEmail,
           createdAt: bugReport.createdAt,
         },
       },

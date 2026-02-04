@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ConfirmModal from '@/app/components/ConfirmModal';
 import NotificationModal from '@/app/components/NotificationModal';
+import ImageLightbox from '@/app/components/ImageLightbox';
 
 type BugReport = {
   id: string;
@@ -254,11 +255,11 @@ export default function BugReportDetailPage({ params }: { params: Promise<{ id: 
           </div>
 
           {/* Screenshot */}
-          {bugReport.image && (
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-semibold text-[#435970] mb-4">Screenshot</h2>
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <h2 className="text-lg font-semibold text-[#435970] mb-4">Screenshot</h2>
+            {bugReport.image ? (
               <div
-                className="cursor-pointer rounded-xl overflow-hidden border border-gray-200 inline-block"
+                className="group relative cursor-pointer rounded-xl overflow-hidden border border-gray-200 inline-block"
                 onClick={() => setImageModalOpen(true)}
               >
                 <img
@@ -266,10 +267,23 @@ export default function BugReportDetailPage({ params }: { params: Promise<{ id: 
                   alt="Bug report screenshot"
                   className="max-w-full max-h-[400px] object-contain"
                 />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-200 flex items-center justify-center">
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 rounded-full p-3">
+                    <svg className="w-6 h-6 text-[#435970]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-[#7895b3] mt-2">Click image to enlarge</p>
-            </div>
-          )}
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-[#7895b3]">
+                <svg className="w-12 h-12 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <p className="text-sm">No screenshot attached</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar Info */}
@@ -371,30 +385,13 @@ export default function BugReportDetailPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      {/* Image Modal */}
-      {imageModalOpen && bugReport.image && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={() => setImageModalOpen(false)}
-        >
-          <div className="relative max-w-4xl max-h-[90vh]">
-            <button
-              onClick={() => setImageModalOpen(false)}
-              className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"
-            >
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <img
-              src={bugReport.image}
-              alt="Bug report screenshot"
-              className="max-w-full max-h-[85vh] object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        </div>
-      )}
+      {/* Image Lightbox */}
+      <ImageLightbox
+        isOpen={imageModalOpen}
+        src={bugReport.image || ''}
+        alt="Bug report screenshot"
+        onClose={() => setImageModalOpen(false)}
+      />
 
       {/* Delete Confirmation Modal */}
       <ConfirmModal

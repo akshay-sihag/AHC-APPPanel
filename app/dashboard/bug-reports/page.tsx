@@ -318,7 +318,7 @@ export default function BugReportsPage() {
                           <img
                             src={report.image}
                             alt=""
-                            className="w-10 h-10 rounded-lg object-cover border border-gray-200 flex-shrink-0"
+                            className="w-10 h-10 rounded-lg object-cover border border-gray-200 flex-shrink-0 hover:scale-105 hover:ring-2 hover:ring-[#7895b3]/40 hover:shadow-md transition-all duration-200"
                           />
                         ) : (
                           <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
