@@ -30,6 +30,8 @@ const ALL_ENTITIES = [
   'weight-logs',
   'medication-logs',
   'daily-checkins',
+  'bug-reports',
+  'scheduled-notifications',
 ];
 
 export async function GET(request: NextRequest) {
@@ -154,6 +156,9 @@ export async function GET(request: NextRequest) {
         image: notif.image,
         url: notif.url,
         isActive: notif.isActive,
+        type: notif.type,
+        icon: notif.icon,
+        source: notif.source,
         receiverCount: notif.receiverCount,
         viewCount: notif.viewCount,
         createdAt: notif.createdAt.toISOString(),
@@ -312,6 +317,70 @@ export async function GET(request: NextRequest) {
       }));
     }
 
+    // Export Bug Reports
+    if (requestedEntities.includes('bug-reports')) {
+      const bugReports = await prisma.bugReport.findMany({
+        include: {
+          appUser: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      exportData.entities['bug-reports'] = bugReports.map(report => ({
+        id: report.id,
+        appUserId: report.appUserId,
+        title: report.title,
+        description: report.description,
+        image: report.image,
+        status: report.status,
+        platform: report.platform,
+        osVersion: report.osVersion,
+        deviceName: report.deviceName,
+        appVersion: report.appVersion,
+        reporterName: report.reporterName,
+        reporterEmail: report.reporterEmail,
+        createdAt: report.createdAt.toISOString(),
+        updatedAt: report.updatedAt.toISOString(),
+      }));
+    }
+
+    // Export Scheduled Notifications
+    if (requestedEntities.includes('scheduled-notifications')) {
+      const scheduledNotifications = await prisma.scheduledNotification.findMany({
+        include: {
+          appUser: {
+            select: {
+              id: true,
+              email: true,
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      exportData.entities['scheduled-notifications'] = scheduledNotifications.map(sn => ({
+        id: sn.id,
+        appUserId: sn.appUserId,
+        checkInId: sn.checkInId,
+        medicationName: sn.medicationName,
+        scheduledDate: sn.scheduledDate,
+        scheduledType: sn.scheduledType,
+        title: sn.title,
+        body: sn.body,
+        status: sn.status,
+        sentAt: sn.sentAt?.toISOString() || null,
+        errorMessage: sn.errorMessage,
+        createdAt: sn.createdAt.toISOString(),
+        updatedAt: sn.updatedAt.toISOString(),
+      }));
+    }
+
     // Add summary
     exportData.summary = {
       'medicine-categories': exportData.entities['medicine-categories']?.length || 0,
@@ -324,6 +393,8 @@ export async function GET(request: NextRequest) {
       'weight-logs': exportData.entities['weight-logs']?.length || 0,
       'medication-logs': exportData.entities['medication-logs']?.length || 0,
       'daily-checkins': exportData.entities['daily-checkins']?.length || 0,
+      'bug-reports': exportData.entities['bug-reports']?.length || 0,
+      'scheduled-notifications': exportData.entities['scheduled-notifications']?.length || 0,
     };
 
     // Return as JSON with proper headers for download (no size limit)

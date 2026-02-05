@@ -605,7 +605,7 @@ export default function SettingsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMode, setImportMode] = useState<'merge' | 'replace' | 'skip-existing'>('merge');
-  const [selectedEntities, setSelectedEntities] = useState<string[]>(['medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications', 'users', 'weight-logs', 'medication-logs', 'daily-checkins']);
+  const [selectedEntities, setSelectedEntities] = useState<string[]>(['medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications', 'users', 'user-devices', 'weight-logs', 'medication-logs', 'daily-checkins', 'bug-reports', 'scheduled-notifications']);
   const [importResult, setImportResult] = useState<any>(null);
 
   // Data Reset States
@@ -1385,6 +1385,9 @@ export default function SettingsPage() {
                   { key: 'weight-logs', label: 'Weight Logs' },
                   { key: 'medication-logs', label: 'Medication Logs' },
                   { key: 'daily-checkins', label: 'Daily Check-ins' },
+                  { key: 'user-devices', label: 'User Devices' },
+                  { key: 'bug-reports', label: 'Bug Reports' },
+                  { key: 'scheduled-notifications', label: 'Scheduled Notifications' },
                 ].map((entity) => (
                   <label key={entity.key} className="flex items-center gap-2 p-3 border border-[#dfedfb] rounded-lg cursor-pointer hover:bg-[#dfedfb]/30 transition-colors">
                     <input
@@ -1534,7 +1537,7 @@ export default function SettingsPage() {
             <div className="mt-6 bg-[#dfedfb]/50 rounded-lg p-4">
               <p className="text-sm text-[#435970] font-medium mb-2">Backup & Restore Information:</p>
               <ul className="text-xs text-[#7895b3] list-disc list-inside space-y-1">
-                <li>Backups include: medicines, categories, blogs, FAQs, notifications, users, weight logs, medication logs, and daily check-ins</li>
+                <li>Backups include: medicines, categories, blogs, FAQs, notifications, users, user devices, weight logs, medication logs, daily check-ins, bug reports, and scheduled notifications</li>
                 <li>Export creates a JSON file (no size limit) that can be imported later</li>
                 <li>Import modes: Merge (update/add), Replace (delete all first), Skip Existing (only new)</li>
                 <li>Automatic backups run daily at 6 AM and are stored in /backup/json-ahc/ (keeps last 2 days)</li>
