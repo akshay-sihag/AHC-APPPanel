@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import ConfirmModal from '@/app/components/ConfirmModal';
 import NotificationModal from '@/app/components/NotificationModal';
-import { getImageUrl } from '@/lib/image-utils';
+import MaterialIconPicker from '@/app/components/MaterialIconPicker';
 
 type Category = {
   id: number;
@@ -26,8 +25,6 @@ export default function CategoryPage() {
     tagline: '',
     icon: ''
   });
-  const [iconPreview, setIconPreview] = useState<string | null>(null);
-  const [iconFile, setIconFile] = useState<File | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<number | null>(null);
   const [showNotification, setShowNotification] = useState(false);
@@ -73,8 +70,6 @@ export default function CategoryPage() {
       tagline: '',
       icon: ''
     });
-    setIconPreview(null);
-    setIconFile(null);
     setIsModalOpen(true);
   };
 
@@ -85,8 +80,6 @@ export default function CategoryPage() {
       tagline: category.tagline || '',
       icon: category.icon || ''
     });
-    setIconPreview(category.icon || null);
-    setIconFile(null);
     setIsModalOpen(true);
   };
 
@@ -228,34 +221,12 @@ export default function CategoryPage() {
     try {
       setSubmitting(true);
 
-      let iconUrl = formData.icon;
-
-      // If a new icon file is selected, upload it first
-      if (iconFile) {
-        const iconFormData = new FormData();
-        iconFormData.append('icon', iconFile);
-
-        const uploadResponse = await fetch('/api/medicine-categories/upload-icon', {
-          method: 'POST',
-          credentials: 'include',
-          body: iconFormData,
-        });
-
-        if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.json();
-          throw new Error(errorData.error || 'Failed to upload icon');
-        }
-
-        const uploadData = await uploadResponse.json();
-        iconUrl = uploadData.iconUrl;
-      }
-
-      const url = editingCategory 
+      const url = editingCategory
         ? `/api/medicine-categories/${editingCategory.id}`
         : '/api/medicine-categories';
-      
+
       const method = editingCategory ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -265,7 +236,7 @@ export default function CategoryPage() {
         body: JSON.stringify({
           title: formData.title.trim(),
           tagline: formData.tagline.trim() || null,
-          icon: iconUrl || null,
+          icon: formData.icon || null,
         }),
       });
 
@@ -300,8 +271,6 @@ export default function CategoryPage() {
         tagline: '',
         icon: ''
       });
-      setIconPreview(null);
-      setIconFile(null);
       setNotification({
         title: 'Success',
         message: editingCategory ? 'Category updated successfully' : 'Category created successfully',
@@ -329,8 +298,6 @@ export default function CategoryPage() {
       tagline: '',
       icon: ''
     });
-    setIconPreview(null);
-    setIconFile(null);
   };
 
   return (
@@ -459,27 +426,11 @@ export default function CategoryPage() {
                       />
                     </td>
                     <td className="px-6 py-4">
-                      <div className="w-12 h-12 bg-[#dfedfb] rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0">
+                      <div className="w-12 h-12 bg-[#dfedfb] rounded-lg flex items-center justify-center flex-shrink-0">
                         {category.icon ? (
-                          <Image
-                            src={getImageUrl(category.icon)}
-                            alt={category.title}
-                            width={48}
-                            height={48}
-                            className="object-cover w-full h-full"
-                            unoptimized
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              if (target.parentElement) {
-                                target.parentElement.innerHTML = `
-                                  <svg class="w-6 h-6 text-[#7895b3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                                  </svg>
-                                `;
-                              }
-                            }}
-                          />
+                          <span className="material-icons text-[#435970]" style={{ fontSize: '28px' }}>
+                            {category.icon}
+                          </span>
                         ) : (
                           <svg className="w-6 h-6 text-[#7895b3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
@@ -594,59 +545,12 @@ export default function CategoryPage() {
                 />
               </div>
 
-              {/* Category Icon Upload */}
-              <div>
-                <label htmlFor="icon" className="block text-sm font-medium text-[#435970] mb-2">
-                  Category Icon
-                </label>
-                <input
-                  type="file"
-                  id="icon"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setIconFile(file);
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        const result = reader.result as string;
-                        setIconPreview(result);
-                      };
-                      reader.readAsDataURL(file);
-                    } else {
-                      // If no file selected, keep existing icon if editing
-                      setIconFile(null);
-                      if (editingCategory && formData.icon) {
-                        setIconPreview(formData.icon);
-                      } else {
-                        setIconPreview(null);
-                      }
-                    }
-                  }}
-                  className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#dfedfb] file:text-[#435970] hover:file:bg-[#7895b3] hover:file:text-white file:cursor-pointer"
-                />
-                {editingCategory && formData.icon && !iconPreview && (
-                  <p className="text-xs text-[#7895b3] mt-1">
-                    Current icon will be kept if no new icon is selected
-                  </p>
-                )}
-                {(iconPreview || (editingCategory && formData.icon)) && (
-                  <div className="mt-2 w-24 h-24 bg-[#dfedfb] rounded-lg overflow-hidden border border-[#dfedfb]">
-                    <Image
-                      src={iconPreview ? getImageUrl(iconPreview) : getImageUrl(formData.icon) || ''}
-                      alt="Icon Preview"
-                      width={96}
-                      height={96}
-                      className="object-cover w-full h-full"
-                      unoptimized
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+              {/* Category Icon Picker */}
+              <MaterialIconPicker
+                selectedIcon={formData.icon || null}
+                onSelectIcon={(name) => setFormData({ ...formData, icon: name })}
+                onClearIcon={() => setFormData({ ...formData, icon: '' })}
+              />
 
               {/* Form Actions */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">

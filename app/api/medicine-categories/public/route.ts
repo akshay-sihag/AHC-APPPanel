@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateApiKey } from '@/lib/middleware';
+import { getIconCodepoint } from '@/lib/material-icons';
 
 /**
  * Public Medicine Categories API Endpoint for Mobile App
@@ -79,6 +80,7 @@ export async function GET(request: NextRequest) {
           title: category.title,
           tagline: category.tagline,
           icon: category.icon,
+          iconCodepoint: category.icon ? `0x${getIconCodepoint(category.icon)}` : null,
           medicineCount: category._count.medicines,
           createdAt: category.createdAt.toISOString(),
           updatedAt: category.updatedAt.toISOString(),
@@ -119,6 +121,7 @@ export async function GET(request: NextRequest) {
         title: cat.title,
         tagline: cat.tagline,
         icon: cat.icon,
+        iconCodepoint: cat.icon ? `0x${getIconCodepoint(cat.icon)}` : null,
         medicineCount: cat._count.medicines,
         createdAt: cat.createdAt.toISOString(),
         updatedAt: cat.updatedAt.toISOString(),
