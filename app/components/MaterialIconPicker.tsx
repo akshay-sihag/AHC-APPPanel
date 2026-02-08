@@ -48,7 +48,7 @@ export default function MaterialIconPicker({
           <>
             <div className="w-10 h-10 bg-[#dfedfb] rounded-lg flex items-center justify-center flex-shrink-0">
               <span
-                className="material-icons text-[#435970]"
+                className="material-symbols-outlined text-[#435970]"
                 style={{ fontSize: '24px' }}
               >
                 {selectedIconData.name}
@@ -75,7 +75,7 @@ export default function MaterialIconPicker({
       {/* Search */}
       <input
         type="text"
-        placeholder="Search 2200+ icons..."
+        placeholder="Search 4100+ icons..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="w-full px-4 py-2 mb-3 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3] text-sm"
@@ -103,7 +103,7 @@ export default function MaterialIconPicker({
                   }`}
                 >
                   <span
-                    className="material-icons"
+                    className="material-symbols-outlined"
                     style={{ fontSize: '22px' }}
                   >
                     {icon.name}

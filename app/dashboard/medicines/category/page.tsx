@@ -428,7 +428,7 @@ export default function CategoryPage() {
                     <td className="px-6 py-4">
                       <div className="w-12 h-12 bg-[#dfedfb] rounded-lg flex items-center justify-center flex-shrink-0">
                         {category.icon ? (
-                          <span className="material-icons text-[#435970]" style={{ fontSize: '28px' }}>
+                          <span className="material-symbols-outlined text-[#435970]" style={{ fontSize: '28px' }}>
                             {category.icon}
                           </span>
                         ) : (
