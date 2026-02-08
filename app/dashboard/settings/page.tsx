@@ -605,7 +605,7 @@ export default function SettingsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMode, setImportMode] = useState<'merge' | 'replace' | 'skip-existing'>('merge');
-  const [selectedEntities, setSelectedEntities] = useState<string[]>(['medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications', 'users', 'user-devices', 'weight-logs', 'medication-logs', 'daily-checkins', 'bug-reports', 'scheduled-notifications']);
+  const [selectedEntities, setSelectedEntities] = useState<string[]>(['settings', 'medicines', 'medicine-categories', 'blogs', 'faqs', 'notifications', 'users', 'user-devices', 'weight-logs', 'medication-logs', 'daily-checkins', 'bug-reports', 'scheduled-notifications']);
   const [importResult, setImportResult] = useState<any>(null);
 
   // Data Reset States
@@ -1376,6 +1376,7 @@ export default function SettingsPage() {
               
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                 {[
+                  { key: 'settings', label: 'Settings & Notification Messages' },
                   { key: 'medicines', label: 'Medicines' },
                   { key: 'medicine-categories', label: 'Medicine Categories' },
                   { key: 'blogs', label: 'Blogs (Featured Content)' },

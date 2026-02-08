@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { MATERIAL_ICONS, ICON_CATEGORIES } from '@/lib/material-icons';
+import { MATERIAL_ICONS } from '@/lib/material-icons';
 
 interface MaterialIconPickerProps {
   selectedIcon: string | null;
@@ -9,34 +9,32 @@ interface MaterialIconPickerProps {
   onClearIcon?: () => void;
 }
 
+const ICONS_PER_PAGE = 200;
+
 export default function MaterialIconPicker({
   selectedIcon,
   onSelectIcon,
   onClearIcon,
 }: MaterialIconPickerProps) {
   const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [visibleCount, setVisibleCount] = useState(ICONS_PER_PAGE);
 
   const filteredIcons = useMemo(() => {
-    return MATERIAL_ICONS.filter((icon) => {
-      const matchesCategory =
-        activeCategory === 'All' || icon.category === activeCategory;
-      if (!matchesCategory) return false;
-
-      if (!search) return true;
-
-      const term = search.toLowerCase();
-      return (
-        icon.name.includes(term) ||
-        icon.label.toLowerCase().includes(term) ||
-        icon.keywords.some((kw) => kw.includes(term))
-      );
-    });
-  }, [search, activeCategory]);
+    setVisibleCount(ICONS_PER_PAGE);
+    if (!search) return MATERIAL_ICONS;
+    const term = search.toLowerCase();
+    return MATERIAL_ICONS.filter(
+      (icon) =>
+        icon.name.includes(term) || icon.label.toLowerCase().includes(term)
+    );
+  }, [search]);
 
   const selectedIconData = selectedIcon
     ? MATERIAL_ICONS.find((i) => i.name === selectedIcon)
     : null;
+
+  const displayedIcons = filteredIcons.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredIcons.length;
 
   return (
     <div>
@@ -77,40 +75,11 @@ export default function MaterialIconPicker({
       {/* Search */}
       <input
         type="text"
-        placeholder="Search icons..."
+        placeholder="Search 2200+ icons..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="w-full px-4 py-2 mb-3 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3] text-sm"
       />
-
-      {/* Category tabs */}
-      <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-thin">
-        <button
-          type="button"
-          onClick={() => setActiveCategory('All')}
-          className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-            activeCategory === 'All'
-              ? 'bg-[#435970] text-white'
-              : 'bg-[#dfedfb] text-[#435970] hover:bg-[#7895b3] hover:text-white'
-          }`}
-        >
-          All
-        </button>
-        {ICON_CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => setActiveCategory(cat)}
-            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-              activeCategory === cat
-                ? 'bg-[#435970] text-white'
-                : 'bg-[#dfedfb] text-[#435970] hover:bg-[#7895b3] hover:text-white'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
 
       {/* Icon grid */}
       <div className="max-h-[280px] overflow-y-auto border border-[#dfedfb] rounded-lg p-2 bg-white">
@@ -119,33 +88,45 @@ export default function MaterialIconPicker({
             No icons found
           </p>
         ) : (
-          <div className="grid grid-cols-8 gap-1">
-            {filteredIcons.map((icon) => (
-              <button
-                key={icon.name}
-                type="button"
-                onClick={() => onSelectIcon(icon.name)}
-                title={icon.label}
-                className={`w-full aspect-square flex items-center justify-center rounded-lg transition-all ${
-                  selectedIcon === icon.name
-                    ? 'bg-[#435970] text-white ring-2 ring-[#435970] ring-offset-1'
-                    : 'text-[#435970] hover:bg-[#dfedfb]'
-                }`}
-              >
-                <span
-                  className="material-icons"
-                  style={{ fontSize: '22px' }}
+          <>
+            <div className="grid grid-cols-8 gap-1">
+              {displayedIcons.map((icon) => (
+                <button
+                  key={icon.name}
+                  type="button"
+                  onClick={() => onSelectIcon(icon.name)}
+                  title={icon.label}
+                  className={`w-full aspect-square flex items-center justify-center rounded-lg transition-all ${
+                    selectedIcon === icon.name
+                      ? 'bg-[#435970] text-white ring-2 ring-[#435970] ring-offset-1'
+                      : 'text-[#435970] hover:bg-[#dfedfb]'
+                  }`}
                 >
-                  {icon.name}
-                </span>
+                  <span
+                    className="material-icons"
+                    style={{ fontSize: '22px' }}
+                  >
+                    {icon.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => setVisibleCount((c) => c + ICONS_PER_PAGE)}
+                className="w-full mt-2 py-2 text-xs text-[#7895b3] hover:text-[#435970] transition-colors"
+              >
+                Load more ({filteredIcons.length - visibleCount} remaining)
               </button>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
 
       <p className="text-xs text-[#7895b3] mt-1.5">
-        {filteredIcons.length} icon{filteredIcons.length !== 1 ? 's' : ''} available
+        {filteredIcons.length} icon{filteredIcons.length !== 1 ? 's' : ''}{' '}
+        {search ? 'found' : 'available'}
       </p>
     </div>
   );

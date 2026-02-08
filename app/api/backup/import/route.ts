@@ -6,13 +6,14 @@ import { prisma } from '@/lib/prisma';
 /**
  * Import Backup Data API
  *
- * Imports all data from JSON backup including medicines, categories, blogs, FAQs,
- * notifications, users, user devices, weight logs, medication logs, daily check-ins,
- * bug reports, and scheduled notifications
+ * Imports all data from JSON backup including settings, medicines, categories, blogs,
+ * FAQs, notifications, users, user devices, weight logs, medication logs, daily
+ * check-ins, bug reports, and scheduled notifications
  *
  * Request Body:
  * {
  *   "entities": {
+ *     "settings": {...},
  *     "medicine-categories": [...],
  *     "medicines": [...],
  *     "blogs": [...],
@@ -76,6 +77,50 @@ export async function POST(request: NextRequest) {
     // User ID mapping: backup user ID -> actual database user ID
     // Needed when merging into a database where users exist with different IDs
     const userIdMap = new Map<string, string>();
+
+    // ========== 0. Import Settings ==========
+    if (importEntities.includes('settings') && entities.settings) {
+      try {
+        const s = entities.settings;
+
+        await prisma.settings.upsert({
+          where: { id: 'settings' },
+          update: {
+            adminEmail: s.adminEmail,
+            timezone: s.timezone,
+            sessionTimeout: s.sessionTimeout,
+            requireStrongPassword: s.requireStrongPassword,
+            enableTwoFactor: s.enableTwoFactor,
+            maintenanceMode: s.maintenanceMode,
+            maintenanceMessage: s.maintenanceMessage || null,
+            orderProcessingTitle: s.orderProcessingTitle || null,
+            orderProcessingBody: s.orderProcessingBody || null,
+            orderCompletedTitle: s.orderCompletedTitle || null,
+            orderCompletedBody: s.orderCompletedBody || null,
+          },
+          create: {
+            id: 'settings',
+            adminEmail: s.adminEmail || 'admin@alternatehealthclub.com',
+            timezone: s.timezone || 'America/New_York',
+            sessionTimeout: s.sessionTimeout || 30,
+            requireStrongPassword: s.requireStrongPassword ?? true,
+            enableTwoFactor: s.enableTwoFactor ?? false,
+            maintenanceMode: s.maintenanceMode ?? false,
+            maintenanceMessage: s.maintenanceMessage || null,
+            orderProcessingTitle: s.orderProcessingTitle || null,
+            orderProcessingBody: s.orderProcessingBody || null,
+            orderCompletedTitle: s.orderCompletedTitle || null,
+            orderCompletedBody: s.orderCompletedBody || null,
+          },
+        });
+
+        results.imported.settings = { imported: 0, updated: 1, skipped: 0, errors: [] };
+        results.summary.settings = 1;
+      } catch (error: any) {
+        results.errors.settings = error.message;
+        results.success = false;
+      }
+    }
 
     // ========== 1. Import Medicine Categories ==========
     if (importEntities.includes('medicine-categories') && entities['medicine-categories']) {

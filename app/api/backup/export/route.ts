@@ -20,6 +20,7 @@ import { prisma } from '@/lib/prisma';
  */
 
 const ALL_ENTITIES = [
+  'settings',
   'medicines',
   'medicine-categories',
   'blogs',
@@ -58,6 +59,30 @@ export async function GET(request: NextRequest) {
       exportedAt: new Date().toISOString(),
       entities: {},
     };
+
+    // Export Settings (includes custom notification messages, maintenance mode, etc.)
+    if (requestedEntities.includes('settings')) {
+      const settings = await prisma.settings.findUnique({
+        where: { id: 'settings' },
+      });
+
+      if (settings) {
+        exportData.entities.settings = {
+          adminEmail: settings.adminEmail,
+          timezone: settings.timezone,
+          sessionTimeout: settings.sessionTimeout,
+          requireStrongPassword: settings.requireStrongPassword,
+          enableTwoFactor: settings.enableTwoFactor,
+          maintenanceMode: settings.maintenanceMode,
+          maintenanceMessage: settings.maintenanceMessage,
+          // Custom Notification Messages
+          orderProcessingTitle: settings.orderProcessingTitle,
+          orderProcessingBody: settings.orderProcessingBody,
+          orderCompletedTitle: settings.orderCompletedTitle,
+          orderCompletedBody: settings.orderCompletedBody,
+        };
+      }
+    }
 
     // Export Medicine Categories (must be exported before medicines due to foreign key)
     // Always include categories if medicines are requested
@@ -383,6 +408,7 @@ export async function GET(request: NextRequest) {
 
     // Add summary
     exportData.summary = {
+      settings: exportData.entities.settings ? 1 : 0,
       'medicine-categories': exportData.entities['medicine-categories']?.length || 0,
       medicines: exportData.entities.medicines?.length || 0,
       blogs: exportData.entities.blogs?.length || 0,
