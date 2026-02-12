@@ -121,29 +121,29 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Deduplication: Check if we've already processed this exact order+status recently (within 5 minutes)
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const existingLog = await prisma.webhookLog.findFirst({
+    // Deduplication: Check if the status actually changed since the last webhook for this order
+    // This prevents duplicate notifications when an order is edited (e.g., tracking number deleted)
+    // but the status hasn't changed. Re-shipments work because the order goes back to "processing"
+    // first, so the next "completed" is a genuine status change.
+    const lastWebhookLog = await prisma.webhookLog.findFirst({
       where: {
         source: 'woocommerce',
         event: 'order_status',
         resourceId: String(orderId),
-        status: orderStatus,
-        createdAt: { gte: fiveMinutesAgo },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (existingLog) {
-      console.log('Duplicate webhook detected - skipping notification', {
+    if (lastWebhookLog && lastWebhookLog.status === orderStatus) {
+      console.log('Status unchanged since last webhook - skipping notification', {
         orderId,
         orderStatus,
-        previousLogId: existingLog.id,
-        previousLogTime: existingLog.createdAt,
+        previousLogId: lastWebhookLog.id,
+        previousLogTime: lastWebhookLog.createdAt,
       });
       return NextResponse.json({
         success: true,
-        message: 'Duplicate webhook - notification already sent',
+        message: 'Status unchanged - notification already sent for this status',
         orderId,
         orderStatus,
         duplicate: true,
