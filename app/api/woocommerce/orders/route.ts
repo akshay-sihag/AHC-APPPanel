@@ -123,6 +123,51 @@ export async function GET(request: NextRequest) {
       return order.parent_id === 0 ? 'standalone' : 'unknown';
     }
 
+    // Helper function to extract tracking info from an order note
+    function extractTrackingFromNote(noteText: string): {
+      tracking_number: string;
+      carrier: string;
+      ship_date: string | null;
+    } | null {
+      const noteLower = noteText.toLowerCase();
+      if (!noteLower.includes('shipped') && !noteLower.includes('tracking') && !noteLower.includes('shipment')) {
+        return null;
+      }
+
+      // UPS tracking number: 1Z followed by 16 alphanumeric characters
+      const upsMatch = noteText.match(/\b(1Z[A-Z0-9]{16})\b/i);
+      if (!upsMatch) {
+        return null;
+      }
+
+      const trackingNumber = upsMatch[1].toUpperCase();
+
+      // Extract carrier info from "via UPS – UPS 2nd Day Air®" pattern
+      let carrier = 'UPS';
+      const carrierMatch = noteText.match(/via\s+(UPS(?:\s*[–\-]\s*UPS\s+[^.®]*[®]?))/i);
+      if (carrierMatch) {
+        carrier = carrierMatch[1].trim();
+      }
+
+      // Extract ship date from "shipped on February 11, 2026" pattern
+      let shipDate: string | null = null;
+      const dateMatch = noteText.match(
+        /shipped\s+on\s+((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})/i
+      );
+      if (dateMatch) {
+        try {
+          const parsed = new Date(dateMatch[1]);
+          if (!isNaN(parsed.getTime())) {
+            shipDate = parsed.toISOString().split('T')[0];
+          }
+        } catch {
+          // Leave shipDate as null
+        }
+      }
+
+      return { tracking_number: trackingNumber, carrier, ship_date: shipDate };
+    }
+
     // Helper function to fetch orders from WooCommerce (OPTIMIZED)
     async function fetchOrdersFromWooCommerce(email: string) {
       const settings = await getWooCommerceSettings();
@@ -303,7 +348,59 @@ export async function GET(request: NextRequest) {
         })
       );
 
-      // STEP 5: Transform orders to return all required fields
+      // STEP 5: Fetch order notes in parallel to extract tracking numbers
+      const orderTrackingMap = new Map<number, Array<{
+        tracking_number: string;
+        carrier: string;
+        ship_date: string | null;
+      }>>();
+
+      await Promise.all(
+        ordersArray.map(async (order: any) => {
+          try {
+            const notesUrl = `${apiUrl}/orders/${order.id}/notes`;
+            const notesResponse = await fetch(notesUrl, {
+              method: 'GET',
+              headers: authHeaders,
+            });
+
+            if (notesResponse.ok) {
+              const notesContentType = notesResponse.headers.get('content-type');
+              if (notesContentType && notesContentType.includes('application/json')) {
+                const notes = await notesResponse.json();
+                const notesArray = Array.isArray(notes) ? notes : [notes];
+
+                const trackingEntries: Array<{
+                  tracking_number: string;
+                  carrier: string;
+                  ship_date: string | null;
+                }> = [];
+                const seenTrackingNumbers = new Set<string>();
+
+                for (const note of notesArray) {
+                  const noteText = note.note || '';
+                  const tracking = extractTrackingFromNote(noteText);
+                  if (tracking && !seenTrackingNumbers.has(tracking.tracking_number)) {
+                    seenTrackingNumbers.add(tracking.tracking_number);
+                    trackingEntries.push(tracking);
+                  }
+                }
+
+                if (trackingEntries.length > 0) {
+                  orderTrackingMap.set(order.id, trackingEntries);
+                }
+              }
+            }
+          } catch (notesError) {
+            // Continue without notes - tracking will be empty for this order
+            console.log(`[Orders API] Could not fetch notes for order ${order.id}: ${notesError}`);
+          }
+        })
+      );
+
+      console.log(`[Orders API] Extracted tracking info for ${orderTrackingMap.size} orders`);
+
+      // STEP 6: Transform orders to return all required fields
       const enrichedOrders = ordersArray.map((order: any) => {
         // Filter meta_data to include tracking and medication_schedule ACF fields
         const relevantMetaData = (order.meta_data || []).filter((meta: any) => {
@@ -476,6 +573,7 @@ export async function GET(request: NextRequest) {
           related_orders: relatedOrdersList,
           related_subscriptions: relatedSubscriptions,
           meta_data: relevantMetaData,
+          tracking: orderTrackingMap.get(order.id) || [],
         };
       });
 

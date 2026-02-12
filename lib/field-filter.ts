@@ -203,6 +203,7 @@ export const FIELD_SETS = {
       'line_items.total',
       'line_items.image.src',
       'meta_data',
+      'tracking',
     ],
     treatment: [
       'id',
