@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { user_id, email } = body;
+    const { user_id, email, name } = body;
 
     // Validate required fields
     if (!user_id) {
@@ -78,6 +78,9 @@ export async function POST(request: NextRequest) {
     };
     if (email) {
       payload.email = String(email);
+    }
+    if (name) {
+      payload.name = String(name);
     }
 
     // Sign JWT with 1 hour expiry
