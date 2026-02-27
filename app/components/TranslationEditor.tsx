@@ -1,6 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
+
+const RichTextEditor = dynamic(() => import('@/app/components/RichTextEditor'), {
+  ssr: false,
+  loading: () => (
+    <div className="border border-[#dfedfb] rounded-lg bg-white p-4 min-h-[200px] flex items-center justify-center">
+      <span className="text-sm text-[#7895b3]">Loading editor...</span>
+    </div>
+  ),
+});
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -423,22 +433,16 @@ export default function TranslationEditor({
                         )}
 
                         {tf.type === 'richtext' && (
-                          <div>
-                            <textarea
-                              rows={6}
-                              value={value}
-                              onChange={(e) =>
-                                handleFieldChange(activeTab, tf.field, e.target.value)
-                              }
-                              placeholder={`${tf.label} in ${
-                                languages.find((l) => l.code === activeTab)?.name || activeTab
-                              } (HTML supported)`}
-                              className="w-full px-3 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]/50 text-sm resize-y font-mono"
-                            />
-                            <p className="text-xs text-[#7895b3] mt-1">
-                              Supports HTML markup.
-                            </p>
-                          </div>
+                          <RichTextEditor
+                            key={`${activeTab}::${tf.field}`}
+                            content={value}
+                            onChange={(html) =>
+                              handleFieldChange(activeTab, tf.field, html)
+                            }
+                            placeholder={`${tf.label} in ${
+                              languages.find((l) => l.code === activeTab)?.name || activeTab
+                            }`}
+                          />
                         )}
                       </div>
                     );
