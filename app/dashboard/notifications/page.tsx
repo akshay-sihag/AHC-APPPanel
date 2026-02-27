@@ -16,6 +16,11 @@ type Notification = {
   isActive: boolean;
   receiverCount: number;
   viewCount: number;
+  sendStatus: string;
+  sendProgress: number;
+  sendTotal: number;
+  successCount: number;
+  failureCount: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -74,6 +79,91 @@ export default function NotificationsPage() {
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
+
+  // Poll progress for notifications that are currently sending
+  useEffect(() => {
+    const sendingIds = notifications
+      .filter(n => n.sendStatus === 'queued' || n.sendStatus === 'sending')
+      .map(n => n.id);
+
+    if (sendingIds.length === 0) return;
+
+    const interval = setInterval(async () => {
+      let anyStillSending = false;
+
+      for (const id of sendingIds) {
+        try {
+          const res = await fetch(`/api/notifications/${id}/progress`, {
+            credentials: 'include',
+          });
+          if (res.ok) {
+            const progress = await res.json();
+            setNotifications(prev => prev.map(n =>
+              n.id === id
+                ? {
+                    ...n,
+                    sendStatus: progress.sendStatus,
+                    sendProgress: progress.sendProgress,
+                    sendTotal: progress.sendTotal,
+                    successCount: progress.successCount,
+                    failureCount: progress.failureCount,
+                    receiverCount: progress.successCount,
+                  }
+                : n
+            ));
+            if (progress.sendStatus === 'queued' || progress.sendStatus === 'sending') {
+              anyStillSending = true;
+            }
+          }
+        } catch {
+          // Ignore polling errors
+        }
+      }
+
+      if (!anyStillSending) {
+        clearInterval(interval);
+        fetchNotifications();
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifications.filter(n => n.sendStatus === 'queued' || n.sendStatus === 'sending').map(n => n.id).join(',')]);
+
+  const handleRetrySend = async (id: string) => {
+    try {
+      const response = await fetch(`/api/notifications/${id}/send`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (response.ok) {
+        setNotifications(prev => prev.map(n =>
+          n.id === id ? { ...n, sendStatus: 'queued', sendProgress: 0, sendTotal: 0 } : n
+        ));
+        setNotification({
+          title: 'Sending',
+          message: 'Push notification resend started in background',
+          type: 'info',
+        });
+        setShowNotification(true);
+      } else {
+        const data = await response.json();
+        setNotification({
+          title: 'Error',
+          message: data.message || data.error || 'Failed to start resend',
+          type: 'error',
+        });
+        setShowNotification(true);
+      }
+    } catch {
+      setNotification({
+        title: 'Error',
+        message: 'Failed to start resend',
+        type: 'error',
+      });
+      setShowNotification(true);
+    }
+  };
 
   const handleDeleteClick = (id: string) => {
     setNotificationToDelete(id);
@@ -303,32 +393,15 @@ export default function NotificationsPage() {
       }
 
       const responseData = await response.json();
-      
-      // Check push notification results
-      let notificationMessage = editingNotification 
-        ? 'Notification updated successfully' 
+
+      let notificationMessage = editingNotification
+        ? 'Notification updated successfully'
         : 'Notification created successfully';
-      
-      if (responseData.pushNotification) {
-        const push = responseData.pushNotification;
-        // Only show errors if all notifications failed (successCount === 0)
-        // If some succeeded, don't show error details to avoid confusion
-        if (push.totalUsers === 0) {
-          notificationMessage += '\n\n⚠️ No active users with FCM tokens found';
-        } else if (push.sent && push.successCount > 0) {
-          // Successfully sent to at least one user - show success message
-          notificationMessage += `\n\n✅ Push notification sent to ${push.successCount} user(s)`;
-          // Only show failure count if there were failures, but don't show error details
-          if (push.failureCount > 0) {
-            notificationMessage += ` (${push.failureCount} failed - invalid tokens removed)`;
-          }
-        } else if (push.successCount === 0 && push.failureCount > 0) {
-          // All failed - show error message
-          notificationMessage += `\n\n⚠️ Push notification failed to send (${push.failureCount} failures)`;
-          if (push.error) {
-            notificationMessage += `\n\nError: ${push.error}`;
-          }
-        }
+
+      if (!editingNotification && formData.isActive) {
+        notificationMessage += '. Push notifications are being sent in the background.';
+      } else if (responseData.notification?.sendStatus === 'queued') {
+        notificationMessage += '. Push notifications are being sent in the background.';
       }
 
       // Refresh notifications list
@@ -337,8 +410,7 @@ export default function NotificationsPage() {
       setNotification({
         title: 'Success',
         message: notificationMessage,
-        // Only show as warning if all notifications failed, otherwise show as success
-        type: (responseData.pushNotification?.successCount ?? 0) > 0 ? 'success' : 'warning',
+        type: 'success',
       });
       setShowNotification(true);
     } catch (err) {
@@ -378,33 +450,18 @@ export default function NotificationsPage() {
       }
 
       const responseData = await response.json();
-      
-      // Check push notification results if notification was activated
+
       let notificationMessage = `Notification ${!currentStatus ? 'activated' : 'deactivated'} successfully`;
-      
-      if (responseData.pushNotification && !currentStatus) {
-        // Notification was just activated, show push notification results
-        const push = responseData.pushNotification;
-        if (push.totalUsers === 0) {
-          notificationMessage += '\n\n⚠️ No active users with FCM tokens found';
-        } else if (push.sent && push.successCount > 0) {
-          notificationMessage += `\n\n✅ Push notification sent to ${push.successCount} user(s)`;
-          if (push.failureCount > 0) {
-            notificationMessage += ` (${push.failureCount} failed - invalid tokens removed)`;
-          }
-        } else if (push.successCount === 0 && push.failureCount > 0) {
-          notificationMessage += `\n\n⚠️ Push notification failed to send (${push.failureCount} failures)`;
-          if (push.error) {
-            notificationMessage += `\n\nError: ${push.error}`;
-          }
-        }
+
+      if (responseData.notification?.sendStatus === 'queued' && !currentStatus) {
+        notificationMessage += '. Push notifications are being sent in the background.';
       }
 
       await fetchNotifications();
       setNotification({
         title: 'Success',
         message: notificationMessage,
-        type: (responseData.pushNotification?.successCount ?? 0) > 0 ? 'success' : 'success',
+        type: 'success',
       });
       setShowNotification(true);
     } catch (err) {
@@ -595,14 +652,59 @@ export default function NotificationsPage() {
                       </button>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-semibold text-[#435970]">
-                          {notification.receiverCount || 0}
+                      {(notification.sendStatus === 'queued' || notification.sendStatus === 'sending') ? (
+                        <div className="min-w-[130px]">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#435970]"></div>
+                            <span className="text-xs font-medium text-[#435970]">
+                              {notification.sendStatus === 'queued' ? 'Queued...' : `Sending ${notification.sendProgress}/${notification.sendTotal}`}
+                            </span>
+                          </div>
+                          <div className="w-full bg-[#dfedfb] rounded-full h-2">
+                            <div
+                              className="bg-[#435970] h-2 rounded-full transition-all duration-300"
+                              style={{
+                                width: `${notification.sendTotal > 0
+                                  ? Math.round((notification.sendProgress / notification.sendTotal) * 100)
+                                  : 0}%`
+                              }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[10px] text-[#7895b3] mt-0.5">
+                            <span>{notification.successCount} sent</span>
+                            {notification.failureCount > 0 && (
+                              <span className="text-red-500">{notification.failureCount} failed</span>
+                            )}
+                          </div>
                         </div>
-                        <svg className="w-4 h-4 text-[#7895b3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                        </svg>
-                      </div>
+                      ) : notification.sendStatus === 'failed' ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-semibold text-red-600">Failed</span>
+                          {notification.sendTotal > 0 && (
+                            <span className="text-xs text-[#7895b3]">
+                              ({notification.successCount}/{notification.sendTotal})
+                            </span>
+                          )}
+                        </div>
+                      ) : notification.sendStatus === 'partial' ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-semibold text-amber-600">
+                            {notification.successCount}
+                          </span>
+                          <span className="text-xs text-red-500">
+                            ({notification.failureCount} failed)
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-semibold text-[#435970]">
+                            {notification.receiverCount || 0}
+                          </div>
+                          <svg className="w-4 h-4 text-[#7895b3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                          </svg>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -622,6 +724,18 @@ export default function NotificationsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
+                        {(notification.sendStatus === 'failed' || notification.sendStatus === 'partial') && (
+                          <button
+                            onClick={() => handleRetrySend(notification.id)}
+                            className="text-amber-600 hover:text-amber-800 transition-colors p-1"
+                            aria-label="Retry sending"
+                            title="Retry sending push notification"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          </button>
+                        )}
                         <button
                           onClick={() => openEditModal(notification)}
                           className="text-[#435970] hover:text-[#7895b3] transition-colors p-1"

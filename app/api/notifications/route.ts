@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-config';
 import { prisma } from '@/lib/prisma';
-import { sendPushNotificationToAll } from '@/lib/fcm-service';
+import { processNotificationSend } from '@/lib/notification-sender';
 
 // GET all notifications
 export async function GET(request: NextRequest) {
@@ -62,99 +62,28 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Send push notification if active
-    let pushResult = null;
-    let pushError = null;
+    // Queue background push notification sending if active
     if (notification.isActive) {
-      // Deduplication: Check if we've already sent a push for this notification recently (within 1 minute)
-      const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-      const existingPushLog = await prisma.pushNotificationLog.findFirst({
-        where: {
-          source: 'admin',
-          sourceId: notification.id,
-          createdAt: { gte: oneMinuteAgo },
-        },
+      await prisma.notification.update({
+        where: { id: notification.id },
+        data: { sendStatus: 'queued' },
       });
 
-      if (existingPushLog) {
-        console.log('Duplicate push detected for notification:', notification.id);
-        return NextResponse.json({
-          success: true,
-          notification,
-          message: 'Notification created (push already sent)',
-          pushNotification: {
-            sent: true,
-            duplicate: true,
-            message: 'Push notification was already sent recently',
-          },
-        }, { status: 201 });
-      }
-
-      try {
-        // Check if image is already a full URL (e.g., from Cloudinary) or a relative path
-        const imageUrl = notification.image 
-          ? (notification.image.startsWith('http://') || notification.image.startsWith('https://'))
-            ? notification.image
-            : `${process.env.NEXTAUTH_URL || 'https://appanel.alternatehealthclub.com'}${notification.image}`
-          : undefined;
-        
-        // Build data payload for FCM
-        const fcmData: Record<string, string> = {
-          notificationId: notification.id,
-          type: 'notification',
-        };
-        
-        // Add URL to data payload if provided
-        if (notification.url) {
-          fcmData.url = notification.url;
-        }
-        
-        pushResult = await sendPushNotificationToAll(
-          notification.title,
-          notification.description,
-          imageUrl,
-          fcmData,
-          { source: 'admin', type: 'general', sourceId: notification.id }
-        );
-
-        // Update receiver count if push was successful
-        if (pushResult && pushResult.successCount > 0) {
-          await prisma.notification.update({
-            where: { id: notification.id },
-            data: { receiverCount: pushResult.successCount },
-          });
-        }
-      } catch (error: any) {
-        console.error('Error sending push notification:', error);
-        pushError = {
-          message: error.message || 'Failed to send push notification',
-          details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-        };
-        // Don't fail the request if push notification fails
-      }
+      // Fire-and-forget: process in background after response is sent
+      after(async () => {
+        await processNotificationSend(notification.id);
+      });
     }
 
     return NextResponse.json({
       success: true,
-      notification,
-      message: 'Notification created successfully',
-      pushNotification: pushResult ? {
-        sent: pushResult.successCount > 0,
-        successCount: pushResult.successCount,
-        failureCount: pushResult.failureCount,
-        totalUsers: pushResult.totalUsers,
-        errors: pushResult.errors || [],
-        error: pushError || (pushResult.failureCount > 0 && pushResult.errors && pushResult.errors.length > 0 
-          ? pushResult.errors[0] 
-          : undefined),
-      } : pushError ? {
-        sent: false,
-        successCount: 0,
-        failureCount: 0,
-        totalUsers: 0,
-        errors: [],
-        error: pushError,
-      } : null,
+      notification: {
+        ...notification,
+        sendStatus: notification.isActive ? 'queued' : 'idle',
+      },
+      message: notification.isActive
+        ? 'Notification created. Push notifications are being sent in the background.'
+        : 'Notification created successfully (inactive, no push sent)',
     }, { status: 201 });
   } catch (error) {
     console.error('Create notification error:', error);

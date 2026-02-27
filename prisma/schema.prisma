@@ -311,6 +311,16 @@ model Notification {
   icon   String? // Icon identifier for mobile app (e.g., ic_order_completed)
   source String  @default("admin") // admin, webhook, system
 
+  // Send progress tracking (background processing)
+  sendStatus      String    @default("idle") // 'idle' | 'queued' | 'sending' | 'sent' | 'failed' | 'partial'
+  sendProgress    Int       @default(0) // Number of tokens processed so far
+  sendTotal       Int       @default(0) // Total tokens to process
+  successCount    Int       @default(0) // Successful sends
+  failureCount    Int       @default(0) // Failed sends
+  sendErrors      String?   @db.Text // JSON array of last 10 error messages
+  sendStartedAt   DateTime?
+  sendCompletedAt DateTime?
+
   // Tracking metrics
   receiverCount Int @default(0) // Number of users who received the push notification
   viewCount     Int @default(0) // Number of users who viewed/opened the notification
@@ -326,6 +336,7 @@ model Notification {
   @@index([createdAt])
   @@index([type])
   @@index([source])
+  @@index([sendStatus])
   @@map("notifications")
 }
 
