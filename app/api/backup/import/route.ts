@@ -6,26 +6,32 @@ import { prisma } from '@/lib/prisma';
 /**
  * Import Backup Data API
  *
- * Imports all data from JSON backup including settings, medicines, categories, blogs,
- * FAQs, notifications, users, user devices, weight logs, medication logs, daily
- * check-ins, bug reports, and scheduled notifications
+ * Imports all data from JSON backup including settings, languages, translations,
+ * medicines, categories, blogs, FAQs, notifications, notification views, push logs,
+ * users, user devices, weight logs, medication logs, daily check-ins, bug reports,
+ * scheduled notifications, and account deletion requests
  *
  * Request Body:
  * {
  *   "entities": {
  *     "settings": {...},
+ *     "languages": [...],
+ *     "translations": [...],
  *     "medicine-categories": [...],
  *     "medicines": [...],
  *     "blogs": [...],
  *     "faqs": [...],
  *     "notifications": [...],
+ *     "notification-views": [...],
+ *     "push-notification-logs": [...],
  *     "users": [...],
  *     "user-devices": [...],
  *     "weight-logs": [...],
  *     "medication-logs": [...],
  *     "daily-checkins": [...],
  *     "bug-reports": [...],
- *     "scheduled-notifications": [...]
+ *     "scheduled-notifications": [...],
+ *     "account-deletion-requests": [...]
  *   },
  *   "options": {
  *     "mode": "replace" | "merge" | "skip-existing",
@@ -118,6 +124,76 @@ export async function POST(request: NextRequest) {
         results.summary.settings = 1;
       } catch (error: any) {
         results.errors.settings = error.message;
+        results.success = false;
+      }
+    }
+
+    // ========== 0b. Import Languages ==========
+    if (importEntities.includes('languages') && entities.languages) {
+      try {
+        const languages = entities.languages;
+        let imported = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        if (mode === 'replace') {
+          // Delete translations first since they reference language codes
+          await prisma.translation.deleteMany({});
+          await prisma.supportedLanguage.deleteMany({});
+        }
+
+        for (const lang of languages) {
+          try {
+            if (!lang.code || !lang.name) {
+              errors.push(`Language missing required fields: ${JSON.stringify(lang).substring(0, 100)}`);
+              continue;
+            }
+
+            // Find existing by id or code (unique constraint on code)
+            const existing = await prisma.supportedLanguage.findFirst({
+              where: {
+                OR: [
+                  { id: lang.id },
+                  { code: lang.code.trim().toLowerCase() },
+                ]
+              }
+            });
+
+            if (mode === 'skip-existing' && existing) {
+              skipped++;
+              continue;
+            }
+
+            const langData = {
+              code: lang.code.trim().toLowerCase(),
+              name: lang.name.trim(),
+              nativeName: lang.nativeName || null,
+              isActive: lang.isActive !== undefined ? lang.isActive : true,
+              order: lang.order || 0,
+            };
+
+            if (existing) {
+              await prisma.supportedLanguage.update({
+                where: { id: existing.id },
+                data: langData,
+              });
+              updated++;
+            } else {
+              await prisma.supportedLanguage.create({
+                data: { id: lang.id, ...langData },
+              });
+              imported++;
+            }
+          } catch (error: any) {
+            errors.push(`Language ${lang.id || lang.code}: ${error.message}`);
+          }
+        }
+
+        results.imported.languages = { imported, updated, skipped, errors };
+        results.summary.languages = imported + updated;
+      } catch (error: any) {
+        results.errors.languages = error.message;
         results.success = false;
       }
     }
@@ -454,6 +530,74 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ========== 5b. Import Translations ==========
+    if (importEntities.includes('translations') && entities.translations) {
+      try {
+        const translations = entities.translations;
+        let imported = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        if (mode === 'replace') {
+          await prisma.translation.deleteMany({});
+        }
+
+        for (const t of translations) {
+          try {
+            if (!t.entityType || !t.entityId || !t.locale || !t.field) {
+              errors.push(`Translation missing required fields: ${JSON.stringify(t).substring(0, 100)}`);
+              continue;
+            }
+
+            // Find existing by id or composite unique [entityType, entityId, locale, field]
+            const existing = await prisma.translation.findFirst({
+              where: {
+                OR: [
+                  { id: t.id },
+                  { entityType: t.entityType, entityId: t.entityId, locale: t.locale, field: t.field },
+                ]
+              }
+            });
+
+            if (mode === 'skip-existing' && existing) {
+              skipped++;
+              continue;
+            }
+
+            const translationData = {
+              entityType: t.entityType,
+              entityId: t.entityId,
+              locale: t.locale,
+              field: t.field,
+              value: t.value || '',
+            };
+
+            if (existing) {
+              await prisma.translation.update({
+                where: { id: existing.id },
+                data: translationData,
+              });
+              updated++;
+            } else {
+              await prisma.translation.create({
+                data: { id: t.id, ...translationData },
+              });
+              imported++;
+            }
+          } catch (error: any) {
+            errors.push(`Translation ${t.id || `${t.entityType}/${t.entityId}/${t.locale}/${t.field}`}: ${error.message}`);
+          }
+        }
+
+        results.imported.translations = { imported, updated, skipped, errors };
+        results.summary.translations = imported + updated;
+      } catch (error: any) {
+        results.errors.translations = error.message;
+        results.success = false;
+      }
+    }
+
     // ========== 6. Import Users (AppUser) ==========
     // Must be imported before weight-logs, medication-logs, daily-checkins, user-devices
     // Handles unique constraints on email and wpUserId by finding existing records first
@@ -467,6 +611,7 @@ export async function POST(request: NextRequest) {
 
         if (mode === 'replace') {
           // Delete dependent records first (order matters for foreign keys)
+          await prisma.accountDeletionRequest.deleteMany({});
           await prisma.dailyCheckIn.deleteMany({});
           await prisma.scheduledNotification.deleteMany({});
           await prisma.medicationLog.deleteMany({});
@@ -1047,6 +1192,250 @@ export async function POST(request: NextRequest) {
         results.summary['scheduled-notifications'] = imported + updated;
       } catch (error: any) {
         results.errors['scheduled-notifications'] = error.message;
+        results.success = false;
+      }
+    }
+
+    // ========== 13. Import Notification Views ==========
+    if (importEntities.includes('notification-views') && entities['notification-views']) {
+      try {
+        const views = entities['notification-views'];
+        let imported = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        if (mode === 'replace') {
+          await prisma.notificationView.deleteMany({});
+        }
+
+        for (const view of views) {
+          try {
+            if (!view.notificationId) {
+              errors.push(`Notification view missing notificationId: ${JSON.stringify(view).substring(0, 100)}`);
+              continue;
+            }
+
+            // Verify notification exists
+            const notification = await prisma.notification.findUnique({
+              where: { id: view.notificationId },
+            });
+
+            if (!notification) {
+              errors.push(`Notification view ${view.id}: Notification ${view.notificationId} not found`);
+              continue;
+            }
+
+            // Resolve user ID through mapping
+            const resolvedUserId = view.appUserId
+              ? (userIdMap.get(view.appUserId) || view.appUserId)
+              : null;
+
+            // Find existing by id or composite unique [notificationId, appUserId]
+            const existing = await prisma.notificationView.findFirst({
+              where: {
+                OR: [
+                  { id: view.id },
+                  ...(resolvedUserId
+                    ? [{ notificationId: view.notificationId, appUserId: resolvedUserId }]
+                    : []),
+                ]
+              }
+            });
+
+            if (mode === 'skip-existing' && existing) {
+              skipped++;
+              continue;
+            }
+
+            // Verify user exists if provided
+            let finalUserId: string | null = null;
+            if (resolvedUserId) {
+              const userExists = await prisma.appUser.findUnique({
+                where: { id: resolvedUserId },
+              });
+              finalUserId = userExists ? resolvedUserId : null;
+            }
+
+            const viewData = {
+              notificationId: view.notificationId,
+              appUserId: finalUserId,
+              wpUserId: view.wpUserId || null,
+              userEmail: view.userEmail || null,
+              viewedAt: view.viewedAt ? new Date(view.viewedAt) : new Date(),
+            };
+
+            if (existing) {
+              await prisma.notificationView.update({
+                where: { id: existing.id },
+                data: viewData,
+              });
+              updated++;
+            } else {
+              await prisma.notificationView.create({
+                data: { id: view.id, ...viewData },
+              });
+              imported++;
+            }
+          } catch (error: any) {
+            errors.push(`Notification view ${view.id}: ${error.message}`);
+          }
+        }
+
+        results.imported['notification-views'] = { imported, updated, skipped, errors };
+        results.summary['notification-views'] = imported + updated;
+      } catch (error: any) {
+        results.errors['notification-views'] = error.message;
+        results.success = false;
+      }
+    }
+
+    // ========== 14. Import Push Notification Logs ==========
+    if (importEntities.includes('push-notification-logs') && entities['push-notification-logs']) {
+      try {
+        const pushLogs = entities['push-notification-logs'];
+        let imported = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        if (mode === 'replace') {
+          await prisma.pushNotificationLog.deleteMany({});
+        }
+
+        for (const log of pushLogs) {
+          try {
+            if (!log.title || !log.body || !log.source) {
+              errors.push(`Push log missing required fields: ${JSON.stringify(log).substring(0, 100)}`);
+              continue;
+            }
+
+            const existing = await prisma.pushNotificationLog.findUnique({
+              where: { id: log.id },
+            });
+
+            if (mode === 'skip-existing' && existing) {
+              skipped++;
+              continue;
+            }
+
+            const logData = {
+              recipientEmail: log.recipientEmail || null,
+              recipientWpUserId: log.recipientWpUserId || null,
+              recipientCount: log.recipientCount || 1,
+              title: log.title,
+              body: log.body,
+              imageUrl: log.imageUrl || null,
+              dataPayload: log.dataPayload || null,
+              source: log.source,
+              type: log.type || 'general',
+              sourceId: log.sourceId || null,
+              status: log.status || 'pending',
+              successCount: log.successCount || 0,
+              failureCount: log.failureCount || 0,
+              errorMessage: log.errorMessage || null,
+              errorCode: log.errorCode || null,
+              fcmMessageId: log.fcmMessageId || null,
+              sentAt: log.sentAt ? new Date(log.sentAt) : null,
+            };
+
+            if (existing) {
+              await prisma.pushNotificationLog.update({
+                where: { id: log.id },
+                data: logData,
+              });
+              updated++;
+            } else {
+              await prisma.pushNotificationLog.create({
+                data: { id: log.id, ...logData },
+              });
+              imported++;
+            }
+          } catch (error: any) {
+            errors.push(`Push log ${log.id}: ${error.message}`);
+          }
+        }
+
+        results.imported['push-notification-logs'] = { imported, updated, skipped, errors };
+        results.summary['push-notification-logs'] = imported + updated;
+      } catch (error: any) {
+        results.errors['push-notification-logs'] = error.message;
+        results.success = false;
+      }
+    }
+
+    // ========== 15. Import Account Deletion Requests ==========
+    if (importEntities.includes('account-deletion-requests') && entities['account-deletion-requests']) {
+      try {
+        const deletionRequests = entities['account-deletion-requests'];
+        let imported = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        if (mode === 'replace') {
+          await prisma.accountDeletionRequest.deleteMany({});
+        }
+
+        for (const req of deletionRequests) {
+          try {
+            if (!req.appUserId || !req.autoDeleteAt) {
+              errors.push(`Account deletion request missing required fields: ${JSON.stringify(req).substring(0, 100)}`);
+              continue;
+            }
+
+            // Resolve user ID through mapping
+            const resolvedUserId = userIdMap.get(req.appUserId) || req.appUserId;
+
+            // Verify user exists
+            const user = await prisma.appUser.findUnique({
+              where: { id: resolvedUserId },
+            });
+
+            if (!user) {
+              errors.push(`Account deletion request ${req.id}: User ${req.appUserId} not found`);
+              continue;
+            }
+
+            const existing = await prisma.accountDeletionRequest.findUnique({
+              where: { id: req.id },
+            });
+
+            if (mode === 'skip-existing' && existing) {
+              skipped++;
+              continue;
+            }
+
+            const reqData = {
+              appUserId: resolvedUserId,
+              status: req.status || 'pending',
+              reason: req.reason || null,
+              requestedAt: req.requestedAt ? new Date(req.requestedAt) : new Date(),
+              resolvedAt: req.resolvedAt ? new Date(req.resolvedAt) : null,
+              autoDeleteAt: new Date(req.autoDeleteAt),
+            };
+
+            if (existing) {
+              await prisma.accountDeletionRequest.update({
+                where: { id: req.id },
+                data: reqData,
+              });
+              updated++;
+            } else {
+              await prisma.accountDeletionRequest.create({
+                data: { id: req.id, ...reqData },
+              });
+              imported++;
+            }
+          } catch (error: any) {
+            errors.push(`Account deletion request ${req.id}: ${error.message}`);
+          }
+        }
+
+        results.imported['account-deletion-requests'] = { imported, updated, skipped, errors };
+        results.summary['account-deletion-requests'] = imported + updated;
+      } catch (error: any) {
+        results.errors['account-deletion-requests'] = error.message;
         results.success = false;
       }
     }

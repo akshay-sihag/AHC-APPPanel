@@ -7,11 +7,11 @@ import { prisma } from '@/lib/prisma';
  * Export Backup Data API
  *
  * Exports all data including medicines, categories, blogs, FAQs, notifications,
- * users, weight logs, medication logs, and daily check-ins as JSON
+ * users, weight logs, medication logs, daily check-ins, languages, and translations as JSON
  *
  * Query Parameters:
  * - entities: Comma-separated list of entities to export
- *   Available: medicines, medicine-categories, blogs, faqs, notifications, users, weight-logs, medication-logs, daily-checkins
+ *   Available: settings, languages, translations, medicines, medicine-categories, blogs, faqs, notifications, notification-views, push-notification-logs, users, user-devices, weight-logs, medication-logs, daily-checkins, bug-reports, scheduled-notifications, account-deletion-requests
  *   If not provided, exports all entities
  *
  * Example:
@@ -21,11 +21,15 @@ import { prisma } from '@/lib/prisma';
 
 const ALL_ENTITIES = [
   'settings',
+  'languages',
+  'translations',
   'medicines',
   'medicine-categories',
   'blogs',
   'faqs',
   'notifications',
+  'notification-views',
+  'push-notification-logs',
   'users',
   'user-devices',
   'weight-logs',
@@ -33,6 +37,7 @@ const ALL_ENTITIES = [
   'daily-checkins',
   'bug-reports',
   'scheduled-notifications',
+  'account-deletion-requests',
 ];
 
 export async function GET(request: NextRequest) {
@@ -82,6 +87,60 @@ export async function GET(request: NextRequest) {
           orderCompletedBody: settings.orderCompletedBody,
         };
       }
+    }
+
+    // Export Supported Languages
+    if (requestedEntities.includes('languages')) {
+      const languages = await prisma.supportedLanguage.findMany({
+        orderBy: [{ order: 'asc' }, { name: 'asc' }],
+      });
+
+      exportData.entities.languages = languages.map(lang => ({
+        id: lang.id,
+        code: lang.code,
+        name: lang.name,
+        nativeName: lang.nativeName,
+        isActive: lang.isActive,
+        order: lang.order,
+        createdAt: lang.createdAt.toISOString(),
+        updatedAt: lang.updatedAt.toISOString(),
+      }));
+    }
+
+    // Export Translations
+    // Auto-include if any translatable content entity is requested
+    const contentEntities = ['medicines', 'medicine-categories', 'blogs', 'faqs'];
+    const hasContentEntity = contentEntities.some(e => requestedEntities.includes(e));
+    if (requestedEntities.includes('translations') || hasContentEntity) {
+      // If specific content entities are requested, only export translations for those types
+      const entityTypeMap: Record<string, string> = {
+        'medicines': 'medicine',
+        'medicine-categories': 'medicine_category',
+        'blogs': 'blog',
+        'faqs': 'faq',
+      };
+
+      const entityTypeFilter = requestedEntities.includes('translations')
+        ? undefined // export all translations
+        : contentEntities
+            .filter(e => requestedEntities.includes(e))
+            .map(e => entityTypeMap[e]);
+
+      const translations = await prisma.translation.findMany({
+        where: entityTypeFilter ? { entityType: { in: entityTypeFilter } } : undefined,
+        orderBy: [{ entityType: 'asc' }, { entityId: 'asc' }, { locale: 'asc' }, { field: 'asc' }],
+      });
+
+      exportData.entities.translations = translations.map(t => ({
+        id: t.id,
+        entityType: t.entityType,
+        entityId: t.entityId,
+        locale: t.locale,
+        field: t.field,
+        value: t.value,
+        createdAt: t.createdAt.toISOString(),
+        updatedAt: t.updatedAt.toISOString(),
+      }));
     }
 
     // Export Medicine Categories (must be exported before medicines due to foreign key)
@@ -188,6 +247,67 @@ export async function GET(request: NextRequest) {
         viewCount: notif.viewCount,
         createdAt: notif.createdAt.toISOString(),
         updatedAt: notif.updatedAt.toISOString(),
+      }));
+    }
+
+    // Export Notification Views
+    if (requestedEntities.includes('notification-views')) {
+      const notificationViews = await prisma.notificationView.findMany({
+        include: {
+          notification: {
+            select: {
+              id: true,
+              title: true,
+            }
+          },
+          appUser: {
+            select: {
+              id: true,
+              email: true,
+            }
+          }
+        },
+        orderBy: { viewedAt: 'desc' },
+      });
+
+      exportData.entities['notification-views'] = notificationViews.map(view => ({
+        id: view.id,
+        notificationId: view.notificationId,
+        notificationTitle: view.notification.title,
+        appUserId: view.appUserId,
+        userEmail: view.appUser?.email || view.userEmail,
+        wpUserId: view.wpUserId,
+        viewedAt: view.viewedAt.toISOString(),
+        createdAt: view.createdAt.toISOString(),
+      }));
+    }
+
+    // Export Push Notification Logs
+    if (requestedEntities.includes('push-notification-logs')) {
+      const pushLogs = await prisma.pushNotificationLog.findMany({
+        orderBy: { createdAt: 'desc' },
+      });
+
+      exportData.entities['push-notification-logs'] = pushLogs.map(log => ({
+        id: log.id,
+        recipientEmail: log.recipientEmail,
+        recipientWpUserId: log.recipientWpUserId,
+        recipientCount: log.recipientCount,
+        title: log.title,
+        body: log.body,
+        imageUrl: log.imageUrl,
+        dataPayload: log.dataPayload,
+        source: log.source,
+        type: log.type,
+        sourceId: log.sourceId,
+        status: log.status,
+        successCount: log.successCount,
+        failureCount: log.failureCount,
+        errorMessage: log.errorMessage,
+        errorCode: log.errorCode,
+        fcmMessageId: log.fcmMessageId,
+        createdAt: log.createdAt.toISOString(),
+        sentAt: log.sentAt?.toISOString() || null,
       }));
     }
 
@@ -406,14 +526,48 @@ export async function GET(request: NextRequest) {
       }));
     }
 
+    // Export Account Deletion Requests
+    if (requestedEntities.includes('account-deletion-requests')) {
+      const deletionRequests = await prisma.accountDeletionRequest.findMany({
+        include: {
+          appUser: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      exportData.entities['account-deletion-requests'] = deletionRequests.map(req => ({
+        id: req.id,
+        appUserId: req.appUserId,
+        userEmail: req.appUser.email,
+        userName: req.appUser.name,
+        status: req.status,
+        reason: req.reason,
+        requestedAt: req.requestedAt.toISOString(),
+        resolvedAt: req.resolvedAt?.toISOString() || null,
+        autoDeleteAt: req.autoDeleteAt.toISOString(),
+        createdAt: req.createdAt.toISOString(),
+        updatedAt: req.updatedAt.toISOString(),
+      }));
+    }
+
     // Add summary
     exportData.summary = {
       settings: exportData.entities.settings ? 1 : 0,
+      languages: exportData.entities.languages?.length || 0,
+      translations: exportData.entities.translations?.length || 0,
       'medicine-categories': exportData.entities['medicine-categories']?.length || 0,
       medicines: exportData.entities.medicines?.length || 0,
       blogs: exportData.entities.blogs?.length || 0,
       faqs: exportData.entities.faqs?.length || 0,
       notifications: exportData.entities.notifications?.length || 0,
+      'notification-views': exportData.entities['notification-views']?.length || 0,
+      'push-notification-logs': exportData.entities['push-notification-logs']?.length || 0,
       users: exportData.entities.users?.length || 0,
       'user-devices': exportData.entities['user-devices']?.length || 0,
       'weight-logs': exportData.entities['weight-logs']?.length || 0,
@@ -421,6 +575,7 @@ export async function GET(request: NextRequest) {
       'daily-checkins': exportData.entities['daily-checkins']?.length || 0,
       'bug-reports': exportData.entities['bug-reports']?.length || 0,
       'scheduled-notifications': exportData.entities['scheduled-notifications']?.length || 0,
+      'account-deletion-requests': exportData.entities['account-deletion-requests']?.length || 0,
     };
 
     // Return as JSON with proper headers for download (no size limit)
