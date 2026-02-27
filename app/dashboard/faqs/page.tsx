@@ -10,8 +10,15 @@ type FAQ = {
   answer: string;
   order: number;
   isActive: boolean;
+  categoryId: number | null;
+  category?: { id: number; title: string } | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type FaqCategoryOption = {
+  id: number;
+  title: string;
 };
 
 export default function FAQsPage() {
@@ -19,6 +26,8 @@ export default function FAQsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [categories, setCategories] = useState<FaqCategoryOption[]>([]);
+  const [filterCategoryId, setFilterCategoryId] = useState('');
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,6 +37,7 @@ export default function FAQsPage() {
     answer: '',
     order: 0,
     isActive: true,
+    categoryId: '' as string | number,
   });
   const [saving, setSaving] = useState(false);
   
@@ -39,6 +49,22 @@ export default function FAQsPage() {
   const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
   const [pendingTranslations, setPendingTranslations] = useState<{locale: string; field: string; value: string}[]>([]);
 
+  // Fetch categories for dropdown
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await fetch('/api/faq-categories', { credentials: 'include' });
+        if (response.ok) {
+          const data = await response.json();
+          setCategories(data.categories || []);
+        }
+      } catch (error) {
+        console.error('Error fetching FAQ categories:', error);
+      }
+    };
+    fetchCategories();
+  }, []);
+
   // Fetch FAQs
   const fetchFaqs = async () => {
     try {
@@ -46,6 +72,7 @@ export default function FAQsPage() {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (showActiveOnly) params.append('activeOnly', 'true');
+      if (filterCategoryId) params.append('categoryId', filterCategoryId);
 
       const response = await fetch(`/api/faqs?${params.toString()}`, {
         credentials: 'include',
@@ -66,7 +93,7 @@ export default function FAQsPage() {
 
   useEffect(() => {
     fetchFaqs();
-  }, [searchTerm, showActiveOnly]);
+  }, [searchTerm, showActiveOnly, filterCategoryId]);
 
   // Open create modal
   const handleCreate = () => {
@@ -76,6 +103,7 @@ export default function FAQsPage() {
       answer: '',
       order: faqs.length + 1,
       isActive: true,
+      categoryId: '',
     });
     setIsModalOpen(true);
   };
@@ -88,6 +116,7 @@ export default function FAQsPage() {
       answer: faq.answer,
       order: faq.order,
       isActive: faq.isActive,
+      categoryId: faq.categoryId || '',
     });
     setIsModalOpen(true);
   };
@@ -108,7 +137,10 @@ export default function FAQsPage() {
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          categoryId: formData.categoryId ? parseInt(String(formData.categoryId)) : null,
+        }),
       });
 
       if (response.ok) {
@@ -234,7 +266,17 @@ export default function FAQsPage() {
               />
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              value={filterCategoryId}
+              onChange={(e) => setFilterCategoryId(e.target.value)}
+              className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#435970]/20 focus:border-[#435970] transition-all text-[#435970]"
+            >
+              <option value="">All Categories</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.title}</option>
+              ))}
+            </select>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -297,6 +339,11 @@ export default function FAQsPage() {
                     <div className="flex items-start justify-between gap-4">
                       <h3 className="font-semibold text-[#435970] text-base">{faq.question}</h3>
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        {faq.category && (
+                          <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
+                            {faq.category.title}
+                          </span>
+                        )}
                         <span
                           className={`px-2.5 py-1 text-xs font-medium rounded-full ${
                             faq.isActive
@@ -433,6 +480,23 @@ export default function FAQsPage() {
                   rows={6}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#435970]/20 focus:border-[#435970] transition-all resize-none"
                 />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-sm font-semibold text-[#435970] mb-2">
+                  Category
+                </label>
+                <select
+                  value={formData.categoryId}
+                  onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#435970]/20 focus:border-[#435970] transition-all text-[#435970]"
+                >
+                  <option value="">No Category</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.title}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Translations */}

@@ -74,6 +74,8 @@ export async function PUT(request: NextRequest) {
       orderProcessingBody,
       orderCompletedTitle,
       orderCompletedBody,
+      pushLogRetentionDays,
+      pushLogCleanupHour,
     } = body;
 
     // Build update data object - only include fields that are provided
@@ -95,6 +97,11 @@ export async function PUT(request: NextRequest) {
     if (orderProcessingBody !== undefined) updateData.orderProcessingBody = orderProcessingBody || null;
     if (orderCompletedTitle !== undefined) updateData.orderCompletedTitle = orderCompletedTitle || null;
     if (orderCompletedBody !== undefined) updateData.orderCompletedBody = orderCompletedBody || null;
+    if (pushLogRetentionDays !== undefined) updateData.pushLogRetentionDays = parseInt(pushLogRetentionDays) || 90;
+    if (pushLogCleanupHour !== undefined) {
+      const hour = parseInt(pushLogCleanupHour);
+      updateData.pushLogCleanupHour = hour >= 0 && hour <= 23 ? hour : 3;
+    }
 
     // Use upsert to create or update settings atomically
     const updatedSettings = await prisma.settings.upsert({

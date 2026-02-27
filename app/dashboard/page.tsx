@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 type DashboardData = {
   users: {
@@ -55,6 +55,37 @@ type DeviceAnalytics = {
   };
 };
 
+type NotificationAnalytics = {
+  pushLogs: {
+    total: number;
+    sent: number;
+    failed: number;
+    today: number;
+    successRate: number;
+    bySource: { admin: number; webhook: number; system: number };
+  };
+  adminNotifications: {
+    total: number;
+    totalReceivers: number;
+    totalViews: number;
+    totalSuccess: number;
+    totalFailures: number;
+  };
+  webhooks: {
+    total: number;
+    byEvent: { orderStatus: number; subscriptionStatus: number };
+    orderStatuses: Record<string, number>;
+    subscriptionStatuses: Record<string, number>;
+  };
+  scheduled: {
+    total: number;
+    pending: number;
+    sent: number;
+    failed: number;
+    cancelled: number;
+  };
+};
+
 const COLORS = ['#435970', '#7895b3', '#dfedfb', '#93b7d8'];
 
 export default function DashboardPage() {
@@ -62,6 +93,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [chartData, setChartData] = useState<any[]>([]);
   const [deviceData, setDeviceData] = useState<DeviceAnalytics | null>(null);
+  const [notifData, setNotifData] = useState<NotificationAnalytics | null>(null);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -162,13 +194,20 @@ export default function DashboardPage() {
           { name: 'FAQs', value: faqsData.total, fill: COLORS[3] },
         ]);
 
-        // Fetch device analytics separately (non-blocking)
+        // Fetch analytics separately (non-blocking)
         fetch('/api/analytics/devices', { credentials: 'include' })
           .then(res => res.ok ? res.json() : null)
           .then(deviceAnalytics => {
             if (deviceAnalytics) setDeviceData(deviceAnalytics);
           })
           .catch(err => console.error('Error fetching device analytics:', err));
+
+        fetch('/api/analytics/notifications', { credentials: 'include' })
+          .then(res => res.ok ? res.json() : null)
+          .then(notifAnalytics => {
+            if (notifAnalytics) setNotifData(notifAnalytics);
+          })
+          .catch(err => console.error('Error fetching notification analytics:', err));
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -220,22 +259,12 @@ export default function DashboardPage() {
     { name: 'Inactive', value: data.users.inactive, fill: '#7895b3' },
   ];
 
-  const notificationData = [
-    { name: 'Active', value: data.notifications.active, fill: '#435970' },
-    { name: 'Inactive', value: data.notifications.inactive, fill: '#7895b3' },
-  ];
-
   const contentData = [
     { name: 'Medicines', count: data.content.medicines },
     { name: 'Categories', count: data.content.medicineCategories },
     { name: 'Blogs', count: data.content.blogs },
     { name: 'FAQs', count: data.content.faqs },
     { name: 'Notifications', count: data.notifications.total },
-  ];
-
-  const engagementData = [
-    { name: 'Weight Logs', value: data.weightLogs.total },
-    { name: 'Notification Views', value: data.notifications.totalViews },
   ];
 
   return (
@@ -456,62 +485,165 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Engagement Metrics */}
+        {/* Push Notifications Summary */}
         <div className="bg-white rounded-lg p-6 border border-[#dfedfb]">
-          <h3 className="text-lg font-bold text-[#435970] mb-4">User Engagement</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={engagementData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#dfedfb" />
-              <XAxis type="number" stroke="#7895b3" />
-              <YAxis dataKey="name" type="category" stroke="#7895b3" width={120} />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#fff', 
-                  border: '1px solid #dfedfb',
-                  borderRadius: '8px'
-                }}
-              />
-              <Bar dataKey="value" fill="#7895b3" radius={[0, 8, 8, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-[#435970]">Push Notifications Summary</h3>
+            <Link href="/dashboard/push-logs" className="text-sm text-[#7895b3] hover:text-[#435970] font-medium">
+              View Logs →
+            </Link>
+          </div>
+          {notifData ? (
+            <div className="space-y-4">
+              {/* Total & Today */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center p-3 bg-[#dfedfb]/40 rounded-lg">
+                  <p className="text-2xl font-bold text-[#435970]">{notifData.pushLogs.total.toLocaleString()}</p>
+                  <p className="text-xs text-[#7895b3]">Total Push Logs</p>
+                </div>
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <p className="text-2xl font-bold text-blue-700">{notifData.pushLogs.today}</p>
+                  <p className="text-xs text-blue-600">Sent Today</p>
+                </div>
+              </div>
+
+              {/* Success Rate */}
+              <div className="p-3 bg-[#dfedfb]/20 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-[#7895b3]">Success Rate</span>
+                  <span className="text-sm font-bold text-[#435970]">{notifData.pushLogs.successRate}%</span>
+                </div>
+                <div className="w-full bg-[#dfedfb] rounded-full h-2">
+                  <div className="bg-green-500 h-2 rounded-full" style={{ width: `${notifData.pushLogs.successRate}%` }}></div>
+                </div>
+                <div className="flex justify-between mt-2 text-xs text-[#7895b3]">
+                  <span>{notifData.pushLogs.sent.toLocaleString()} sent</span>
+                  <span>{notifData.pushLogs.failed.toLocaleString()} failed</span>
+                </div>
+              </div>
+
+              {/* By Source */}
+              <div>
+                <p className="text-sm font-medium text-[#435970] mb-2">By Source</p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>
+                      <span className="text-sm text-purple-700">Admin</span>
+                    </div>
+                    <span className="text-sm font-semibold text-purple-700">{notifData.pushLogs.bySource.admin.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 bg-orange-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-orange-500"></div>
+                      <span className="text-sm text-orange-700">Webhook</span>
+                    </div>
+                    <span className="text-sm font-semibold text-orange-700">{notifData.pushLogs.bySource.webhook.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 bg-teal-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-teal-500"></div>
+                      <span className="text-sm text-teal-700">System</span>
+                    </div>
+                    <span className="text-sm font-semibold text-teal-700">{notifData.pushLogs.bySource.system.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <p className="text-2xl font-bold text-green-700">{data.notifications.totalViews}</p>
+                  <p className="text-xs text-green-600">Total Views</p>
+                </div>
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <p className="text-2xl font-bold text-blue-700">{data.notifications.totalReceivers.toLocaleString()}</p>
+                  <p className="text-xs text-blue-600">Total Receivers</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Notification Status */}
+        {/* Webhook Notifications Breakdown */}
         <div className="bg-white rounded-lg p-6 border border-[#dfedfb]">
-          <h3 className="text-lg font-bold text-[#435970] mb-4">Notification Performance</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie
-                data={notificationData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {notificationData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="grid grid-cols-2 gap-4 mt-4">
-            <div className="text-center p-3 bg-green-50 rounded-lg">
-              <p className="text-2xl font-bold text-green-700">{data.notifications.totalViews}</p>
-              <p className="text-xs text-green-600">Total Views</p>
+          <h3 className="text-lg font-bold text-[#435970] mb-4">Webhook Notifications</h3>
+          {notifData ? (
+            <div className="space-y-4">
+              {/* Webhook Event Types */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <p className="text-2xl font-bold text-blue-700">{notifData.webhooks.byEvent.orderStatus}</p>
+                  <p className="text-xs text-blue-600">Order Status</p>
+                </div>
+                <div className="text-center p-3 bg-indigo-50 rounded-lg">
+                  <p className="text-2xl font-bold text-indigo-700">{notifData.webhooks.byEvent.subscriptionStatus}</p>
+                  <p className="text-xs text-indigo-600">Subscription Status</p>
+                </div>
+              </div>
+
+              {/* Order Status Breakdown */}
+              {Object.keys(notifData.webhooks.orderStatuses).length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-[#435970] mb-2">Order Statuses</p>
+                  <div className="space-y-1.5">
+                    {Object.entries(notifData.webhooks.orderStatuses).map(([status, count]) => (
+                      <div key={status} className="flex items-center justify-between p-2 bg-[#dfedfb]/30 rounded-lg">
+                        <span className="text-sm text-[#435970] capitalize">{status.replace(/-/g, ' ')}</span>
+                        <span className="text-sm font-semibold text-[#435970]">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Subscription Status Breakdown */}
+              {Object.keys(notifData.webhooks.subscriptionStatuses).length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-[#435970] mb-2">Subscription Statuses</p>
+                  <div className="space-y-1.5">
+                    {Object.entries(notifData.webhooks.subscriptionStatuses).map(([status, count]) => (
+                      <div key={status} className="flex items-center justify-between p-2 bg-[#dfedfb]/30 rounded-lg">
+                        <span className="text-sm text-[#435970] capitalize">{status.replace(/-/g, ' ')}</span>
+                        <span className="text-sm font-semibold text-[#435970]">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {notifData.webhooks.total === 0 && (
+                <p className="text-sm text-[#7895b3] text-center py-4">No webhook notifications yet</p>
+              )}
+
+              {/* Scheduled Notifications */}
+              {notifData.scheduled.total > 0 && (
+                <div className="pt-3 border-t border-[#dfedfb]">
+                  <p className="text-sm font-medium text-[#435970] mb-2">Scheduled Notifications</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="text-center p-2 bg-yellow-50 rounded-lg">
+                      <p className="text-lg font-bold text-yellow-700">{notifData.scheduled.pending}</p>
+                      <p className="text-xs text-yellow-600">Pending</p>
+                    </div>
+                    <div className="text-center p-2 bg-green-50 rounded-lg">
+                      <p className="text-lg font-bold text-green-700">{notifData.scheduled.sent}</p>
+                      <p className="text-xs text-green-600">Sent</p>
+                    </div>
+                    <div className="text-center p-2 bg-red-50 rounded-lg">
+                      <p className="text-lg font-bold text-red-700">{notifData.scheduled.failed}</p>
+                      <p className="text-xs text-red-600">Failed</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="text-center p-3 bg-blue-50 rounded-lg">
-              <p className="text-2xl font-bold text-blue-700">
-                {data.notifications.totalReceivers > 0 && data.notifications.totalViews > 0 
-                  ? `${((data.notifications.totalViews / data.notifications.totalReceivers) * 100).toFixed(1)}%` 
-                  : '0%'}
-              </p>
-              <p className="text-xs text-blue-600">View Rate</p>
+          ) : (
+            <div className="text-center p-3 bg-[#dfedfb]/40 rounded-lg">
+              <p className="text-2xl font-bold text-[#435970]">{data.notifications.total}</p>
+              <p className="text-xs text-[#7895b3]">Total Notifications</p>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

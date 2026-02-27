@@ -400,6 +400,66 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ========== 3.5 Import FAQ Categories (before FAQs due to FK) ==========
+    if ((importEntities.includes('faq-categories') || importEntities.includes('faqs')) && entities['faq-categories']) {
+      try {
+        const faqCategories = entities['faq-categories'];
+        let imported = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        if (mode === 'replace') {
+          await prisma.faqCategory.deleteMany({});
+        }
+
+        for (const cat of faqCategories) {
+          try {
+            if (!cat.title) {
+              errors.push(`FAQ Category missing title: ${JSON.stringify(cat).substring(0, 100)}`);
+              continue;
+            }
+
+            const existing = await prisma.faqCategory.findUnique({
+              where: { id: cat.id },
+            });
+
+            if (mode === 'skip-existing' && existing) {
+              skipped++;
+              continue;
+            }
+
+            const catData = {
+              title: cat.title,
+              order: cat.order || 0,
+              isActive: cat.isActive !== undefined ? cat.isActive : true,
+            };
+
+            if (existing) {
+              await prisma.faqCategory.update({
+                where: { id: cat.id },
+                data: catData,
+              });
+              updated++;
+            } else {
+              await prisma.faqCategory.create({
+                data: { id: cat.id, ...catData },
+              });
+              imported++;
+            }
+          } catch (error: any) {
+            errors.push(`FAQ Category ${cat.id || cat.title}: ${error.message}`);
+          }
+        }
+
+        results.imported['faq-categories'] = { imported, updated, skipped, errors };
+        results.summary['faq-categories'] = imported + updated;
+      } catch (error: any) {
+        results.errors['faq-categories'] = error.message;
+        results.success = false;
+      }
+    }
+
     // ========== 4. Import FAQs ==========
     if (importEntities.includes('faqs') && entities.faqs) {
       try {
@@ -434,6 +494,7 @@ export async function POST(request: NextRequest) {
               answer: faq.answer,
               order: faq.order || 0,
               isActive: faq.isActive !== undefined ? faq.isActive : true,
+              categoryId: faq.categoryId || null,
             };
 
             if (existing) {

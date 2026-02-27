@@ -25,6 +25,11 @@ export async function GET(request: NextRequest) {
       whereClause.isActive = true;
     }
 
+    const categoryId = searchParams.get('categoryId');
+    if (categoryId) {
+      whereClause.categoryId = parseInt(categoryId);
+    }
+
     if (search) {
       whereClause.OR = [
         { question: { contains: search, mode: 'insensitive' } },
@@ -38,6 +43,9 @@ export async function GET(request: NextRequest) {
         { order: 'asc' },
         { createdAt: 'desc' },
       ],
+      include: {
+        category: { select: { id: true, title: true } },
+      },
     });
 
     return NextResponse.json({
@@ -64,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { question, answer, order, isActive } = body;
+    const { question, answer, order, isActive, categoryId } = body;
 
     // Validate required fields
     if (!question || !answer) {
@@ -89,6 +97,10 @@ export async function POST(request: NextRequest) {
         answer: answer.trim(),
         order: faqOrder,
         isActive: isActive !== undefined ? isActive : true,
+        categoryId: categoryId ? parseInt(String(categoryId)) : null,
+      },
+      include: {
+        category: { select: { id: true, title: true } },
       },
     });
 

@@ -287,6 +287,10 @@ export default function SettingsPage() {
     // Maintenance Mode
     maintenanceMode: false,
     maintenanceMessage: '',
+
+    // Log Retention
+    pushLogRetentionDays: 90,
+    pushLogCleanupHour: 3,
   });
 
   // Fetch settings on mount and update email when session is available
@@ -315,6 +319,8 @@ export default function SettingsPage() {
             orderCompletedBody: data.orderCompletedBody || '',
             maintenanceMode: data.maintenanceMode ?? false,
             maintenanceMessage: data.maintenanceMessage || '',
+            pushLogRetentionDays: data.pushLogRetentionDays || 90,
+            pushLogCleanupHour: data.pushLogCleanupHour ?? 3,
           }));
         }
       } catch (error) {
@@ -661,6 +667,8 @@ export default function SettingsPage() {
         orderCompletedBody: '',
         maintenanceMode: false,
         maintenanceMessage: '',
+        pushLogRetentionDays: 90,
+        pushLogCleanupHour: 3,
       }));
     }
   };
@@ -1998,6 +2006,63 @@ export default function SettingsPage() {
                     {(settings.orderCompletedBody || 'Your order #{orderNumber} has been completed! Thank you for your purchase.').replace('{orderNumber}', '1234')}
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Log Retention Setting */}
+            <div className="mt-8 pt-6 border-t border-[#dfedfb]">
+              <h4 className="text-lg font-semibold text-[#435970] mb-2">Push Log Retention</h4>
+              <p className="text-sm text-[#7895b3] mb-4">
+                Choose how long to keep push notification logs, webhook logs, and completed scheduled notifications. A daily cleanup job automatically removes older logs.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="pushLogRetentionDays" className="block text-sm font-medium text-[#435970] mb-2">
+                    Keep logs for
+                  </label>
+                  <select
+                    id="pushLogRetentionDays"
+                    value={settings.pushLogRetentionDays}
+                    onChange={(e) => handleInputChange('pushLogRetentionDays', parseInt(e.target.value))}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] bg-white"
+                  >
+                    <option value={7}>7 days</option>
+                    <option value={15}>15 days</option>
+                    <option value={30}>30 days</option>
+                    <option value={60}>60 days</option>
+                    <option value={90}>90 days (default)</option>
+                    <option value={180}>6 months</option>
+                    <option value={365}>1 year</option>
+                  </select>
+                  <p className="text-xs text-[#7895b3] mt-1">
+                    Logs older than this will be permanently deleted.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="pushLogCleanupHour" className="block text-sm font-medium text-[#435970] mb-2">
+                    Cleanup time (UTC)
+                  </label>
+                  <select
+                    id="pushLogCleanupHour"
+                    value={settings.pushLogCleanupHour}
+                    onChange={(e) => handleInputChange('pushLogCleanupHour', parseInt(e.target.value))}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] bg-white"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i}>
+                        {i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`} UTC{i === 3 ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-[#7895b3] mt-1">
+                    The daily cleanup job runs once at this hour.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-800">
+                  <strong>Warning:</strong> Reducing the retention period will permanently delete all logs older than the new period on the next cleanup run. This action cannot be undone.
+                </p>
               </div>
             </div>
           </div>

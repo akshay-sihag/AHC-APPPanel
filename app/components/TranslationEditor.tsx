@@ -27,7 +27,7 @@ type TranslationData = {
 };
 
 type TranslationEditorProps = {
-  entityType: 'medicine' | 'medicine_category' | 'blog' | 'faq';
+  entityType: 'medicine' | 'medicine_category' | 'blog' | 'faq' | 'faq_category';
   entityId: string | null;
   translatableFields: TranslatableField[];
   onTranslationsChange?: (translations: TranslationData[]) => void;

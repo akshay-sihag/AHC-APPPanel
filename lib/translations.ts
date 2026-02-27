@@ -6,6 +6,7 @@ export const TRANSLATABLE_FIELDS: Record<string, string[]> = {
   medicine_category: ['title', 'tagline'],
   blog: ['title', 'tagline', 'description'],
   faq: ['question', 'answer'],
+  faq_category: ['title'],
 };
 
 /**

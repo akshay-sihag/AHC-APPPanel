@@ -42,6 +42,7 @@ function DashboardLayoutContent({
   useEffect(() => {
     const isMedicinesPage = pathname === '/dashboard/medicines' || pathname === '/dashboard/medicines/category';
     const isNotificationsPage = pathname === '/dashboard/notifications' || pathname === '/dashboard/push-logs';
+    const isFaqsPage = pathname === '/dashboard/faqs' || pathname === '/dashboard/faqs/category';
 
     // Use setTimeout to avoid synchronous setState in effect
     const timeoutId = setTimeout(() => {
@@ -52,6 +53,9 @@ function DashboardLayoutContent({
         }
         if (isNotificationsPage && !updated.includes('notifications')) {
           updated.push('notifications');
+        }
+        if (isFaqsPage && !updated.includes('faqs')) {
+          updated.push('faqs');
         }
         return updated;
       });
@@ -110,7 +114,7 @@ function DashboardLayoutContent({
     { name: 'Medicines', href: '/dashboard/medicines', icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', hasSubmenu: true, submenuKey: 'medicines' },
     { name: 'Featured Content', href: '/dashboard/blogs', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z', hasSubmenu: false },
     { name: 'Notifications', href: '/dashboard/notifications', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9', hasSubmenu: true, submenuKey: 'notifications' },
-    { name: 'FAQs', href: '/dashboard/faqs', icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', hasSubmenu: false },
+    { name: 'FAQs', href: '/dashboard/faqs', icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', hasSubmenu: true, submenuKey: 'faqs' },
     { name: 'Bug Reports', href: '/dashboard/bug-reports', icon: 'M12 19l9 2-9-18-9 18 9-2zm0 0v-8', hasSubmenu: false },
     { name: 'Account Deletions', href: '/dashboard/account-deletions', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', hasSubmenu: false },
     { name: 'Settings', href: '/dashboard/settings', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4', hasSubmenu: false },
@@ -193,7 +197,7 @@ function DashboardLayoutContent({
         {/* Navigation Menu */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map((item) => {
-            const isActive = pathname === item.href || (item.href === '/dashboard/medicines' && pathname.startsWith('/dashboard/medicines'));
+            const isActive = pathname === item.href || (item.href === '/dashboard/medicines' && pathname.startsWith('/dashboard/medicines')) || (item.href === '/dashboard/faqs' && pathname.startsWith('/dashboard/faqs'));
             const isExpanded = item.hasSubmenu && expandedMenus.includes(item.submenuKey || '');
             const currentCategory = searchParams.get('category');
 
@@ -305,6 +309,128 @@ function DashboardLayoutContent({
                               strokeLinejoin="round"
                               strokeWidth={2}
                               d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                            />
+                          </svg>
+                        </div>
+                        <span className="font-medium truncate">All</span>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (item.hasSubmenu && item.submenuKey === 'faqs') {
+              const isFaqsActive = pathname === '/dashboard/faqs' || pathname === '/dashboard/faqs/category';
+              const isFaqsExpanded = expandedMenus.includes('faqs');
+
+              return (
+                <div key={item.href} className="space-y-1">
+                  <button
+                    onClick={() => toggleMenu('faqs')}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
+                      isFaqsActive
+                        ? 'bg-gradient-to-r from-[#7895b3] to-[#6c7a89] text-white shadow-lg shadow-[#7895b3]/30'
+                        : 'text-white/90 hover:bg-[#7895b3]/25 hover:text-white hover:shadow-md'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`flex-shrink-0 w-5 h-5 flex items-center justify-center transition-transform duration-300 ${isFaqsActive ? 'scale-110' : 'group-hover:scale-110'}`}>
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d={item.icon}
+                          />
+                        </svg>
+                      </div>
+                      {isSidebarOpen && (
+                        <span className="font-semibold text-sm truncate">{item.name}</span>
+                      )}
+                    </div>
+                    {isSidebarOpen && (
+                      <svg
+                        className={`w-4 h-4 flex-shrink-0 transition-all duration-300 ${isFaqsExpanded ? 'rotate-90' : ''} ${isFaqsActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2.5}
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                  {isFaqsExpanded && isSidebarOpen && (
+                    <div className="relative ml-6 mt-2 space-y-1.5 pl-2">
+                      {/* Visual connector line */}
+                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-[#7895b3]/50 via-[#7895b3]/30 to-transparent rounded-full"></div>
+
+                      {/* Category Management Link */}
+                      <Link
+                        href="/dashboard/faqs/category"
+                        className={`relative flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all duration-300 group ${
+                          pathname === '/dashboard/faqs/category'
+                            ? 'bg-gradient-to-r from-[#7895b3] to-[#6c7a89] text-white shadow-md shadow-[#7895b3]/20'
+                            : 'text-white/75 hover:bg-[#7895b3]/20 hover:text-white hover:translate-x-1'
+                        }`}
+                      >
+                        {/* Active indicator dot */}
+                        {pathname === '/dashboard/faqs/category' && (
+                          <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-sm border-2 border-[#7895b3]"></div>
+                        )}
+                        <div className={`flex-shrink-0 w-4 h-4 flex items-center justify-center transition-transform duration-300 ${pathname === '/dashboard/faqs/category' ? 'scale-110' : 'group-hover:scale-110'}`}>
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                            />
+                          </svg>
+                        </div>
+                        <span className="font-medium truncate">Category</span>
+                      </Link>
+
+                      {/* All FAQs Link */}
+                      <Link
+                        href="/dashboard/faqs"
+                        className={`relative flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all duration-300 group ${
+                          pathname === '/dashboard/faqs'
+                            ? 'bg-gradient-to-r from-[#7895b3] to-[#6c7a89] text-white shadow-md shadow-[#7895b3]/20'
+                            : 'text-white/75 hover:bg-[#7895b3]/20 hover:text-white hover:translate-x-1'
+                        }`}
+                      >
+                        {/* Active indicator dot */}
+                        {pathname === '/dashboard/faqs' && (
+                          <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-sm border-2 border-[#7895b3]"></div>
+                        )}
+                        <div className={`flex-shrink-0 w-4 h-4 flex items-center justify-center transition-transform duration-300 ${pathname === '/dashboard/faqs' ? 'scale-110' : 'group-hover:scale-110'}`}>
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                             />
                           </svg>
                         </div>

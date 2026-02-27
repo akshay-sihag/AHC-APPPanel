@@ -83,6 +83,10 @@ model Settings {
   maintenanceMode    Boolean @default(false)
   maintenanceMessage String?
 
+  // Log Retention Settings
+  pushLogRetentionDays Int @default(90) // How many days to keep push notification logs (7, 15, 30, 60, 90, 180, 365)
+  pushLogCleanupHour   Int @default(3)  // UTC hour (0-23) when the daily cleanup cron runs
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -412,17 +416,41 @@ model MedicationLog {
   @@map("medication_logs")
 }
 
-model FAQ {
-  id       String  @id @default(cuid())
-  question String
-  answer   String  @db.Text
-  order    Int     @default(0) // For custom ordering
+model FaqCategory {
+  id       Int     @id @default(autoincrement())
+  title    String
+  order    Int     @default(0)
   isActive Boolean @default(true)
+
+  // Relations
+  faqs FAQ[]
 
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([title])
+  @@index([isActive])
+  @@index([order])
+  @@map("faq_categories")
+}
+
+model FAQ {
+  id         String  @id @default(cuid())
+  categoryId Int?
+  question   String
+  answer     String  @db.Text
+  order      Int     @default(0) // For custom ordering
+  isActive   Boolean @default(true)
+
+  // Relations
+  category FaqCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
   @@index([isActive])
   @@index([order])
   @@map("faqs")

@@ -26,6 +26,7 @@ const ALL_ENTITIES = [
   'medicines',
   'medicine-categories',
   'blogs',
+  'faq-categories',
   'faqs',
   'notifications',
   'notification-views',
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
 
     // Export Translations
     // Auto-include if any translatable content entity is requested
-    const contentEntities = ['medicines', 'medicine-categories', 'blogs', 'faqs'];
+    const contentEntities = ['medicines', 'medicine-categories', 'blogs', 'faq-categories', 'faqs'];
     const hasContentEntity = contentEntities.some(e => requestedEntities.includes(e));
     if (requestedEntities.includes('translations') || hasContentEntity) {
       // If specific content entities are requested, only export translations for those types
@@ -117,6 +118,7 @@ export async function GET(request: NextRequest) {
         'medicines': 'medicine',
         'medicine-categories': 'medicine_category',
         'blogs': 'blog',
+        'faq-categories': 'faq_category',
         'faqs': 'faq',
       };
 
@@ -210,6 +212,22 @@ export async function GET(request: NextRequest) {
       }));
     }
 
+    // Export FAQ Categories (before FAQs due to foreign key)
+    if (requestedEntities.includes('faq-categories') || requestedEntities.includes('faqs')) {
+      const faqCategories = await prisma.faqCategory.findMany({
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      });
+
+      exportData.entities['faq-categories'] = faqCategories.map(cat => ({
+        id: cat.id,
+        title: cat.title,
+        order: cat.order,
+        isActive: cat.isActive,
+        createdAt: cat.createdAt.toISOString(),
+        updatedAt: cat.updatedAt.toISOString(),
+      }));
+    }
+
     // Export FAQs
     if (requestedEntities.includes('faqs')) {
       const faqs = await prisma.fAQ.findMany({
@@ -218,6 +236,7 @@ export async function GET(request: NextRequest) {
 
       exportData.entities.faqs = faqs.map(faq => ({
         id: faq.id,
+        categoryId: faq.categoryId,
         question: faq.question,
         answer: faq.answer,
         order: faq.order,

@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/resume-notifications",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-push-logs",
+      "schedule": "0 * * * *"
     }
   ]
 }

@@ -19,6 +19,9 @@ export async function GET(
 
     const faq = await prisma.fAQ.findUnique({
       where: { id },
+      include: {
+        category: { select: { id: true, title: true } },
+      },
     });
 
     if (!faq) {
@@ -48,7 +51,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
-    const { question, answer, order, isActive } = body;
+    const { question, answer, order, isActive, categoryId } = body;
 
     // Check if FAQ exists
     const existingFaq = await prisma.fAQ.findUnique({
@@ -65,16 +68,23 @@ export async function PUT(
       answer?: string;
       order?: number;
       isActive?: boolean;
+      categoryId?: number | null;
     } = {};
 
     if (question !== undefined) updateData.question = question.trim();
     if (answer !== undefined) updateData.answer = answer.trim();
     if (order !== undefined) updateData.order = order;
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (categoryId !== undefined) {
+      updateData.categoryId = categoryId ? parseInt(String(categoryId)) : null;
+    }
 
     const faq = await prisma.fAQ.update({
       where: { id },
       data: updateData,
+      include: {
+        category: { select: { id: true, title: true } },
+      },
     });
 
     return NextResponse.json({
