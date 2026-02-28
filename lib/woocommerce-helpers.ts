@@ -165,18 +165,26 @@ async function getCachedCustomerId(email: string): Promise<number | null> {
 }
 
 /**
- * Stores WooCommerce customer ID in the database for future lookups
+ * Stores WooCommerce customer ID and name in the database for future lookups
  * @param email - Customer email address
  * @param customerId - WooCommerce customer ID to cache
+ * @param customerName - Optional WooCommerce customer full name to cache
  */
-async function cacheCustomerId(email: string, customerId: number): Promise<void> {
+async function cacheCustomerId(email: string, customerId: number, customerName?: string): Promise<void> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Update the AppUser with the WooCommerce customer ID
+    // Update the AppUser with the WooCommerce customer ID and name
+    const data: { woocommerceCustomerId: number; wooCustomerName?: string } = {
+      woocommerceCustomerId: customerId,
+    };
+    if (customerName) {
+      data.wooCustomerName = customerName;
+    }
+
     const result = await prisma.appUser.updateMany({
       where: { email: normalizedEmail },
-      data: { woocommerceCustomerId: customerId },
+      data,
     });
 
     if (result.count > 0) {
@@ -248,9 +256,10 @@ export async function getCustomerByEmailCached(
   // Step 2: Fall back to email lookup via WooCommerce API
   const customer = await getCustomerByEmail(apiUrl, authHeaders, normalizedEmail);
 
-  // Step 3: Cache the customer ID if found
+  // Step 3: Cache the customer ID and name if found
   if (customer?.id) {
-    await cacheCustomerId(normalizedEmail, customer.id);
+    const fullName = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim();
+    await cacheCustomerId(normalizedEmail, customer.id, fullName || undefined);
   }
 
   return customer;

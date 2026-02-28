@@ -9,6 +9,7 @@ type User = {
   id: string;
   name: string;
   email: string;
+  customerName?: string | null;
   status: string;
   lastLogin: string;
   weight: string;
@@ -281,10 +282,15 @@ export default function UserDetailsPage() {
       <div className="bg-white rounded-lg border border-[#dfedfb] p-6">
         <div className="flex items-center gap-6 pb-6 border-b border-[#dfedfb]">
           <div className="w-24 h-24 bg-[#435970] rounded-full flex items-center justify-center text-white font-semibold text-3xl">
-            {user.name.split(' ').map(n => n[0]).join('')}
+            {(user.customerName || user.name).split(' ').map(n => n[0]).join('').slice(0, 2)}
           </div>
           <div className="flex-1">
-            <h4 className="text-3xl font-bold text-[#435970] mb-2">{user.name}</h4>
+            <h4 className="text-3xl font-bold text-[#435970] mb-1">
+              {user.customerName || user.name}
+            </h4>
+            {user.customerName && (
+              <p className="text-[#7895b3] text-base mb-1">{user.name}</p>
+            )}
             <p className="text-[#7895b3] text-lg mb-3">{user.email}</p>
             <span
               className={`inline-flex px-4 py-2 text-sm font-medium rounded-full ${
@@ -304,6 +310,12 @@ export default function UserDetailsPage() {
           <div className="space-y-4">
             <h5 className="text-xl font-semibold text-[#435970] mb-4">Basic Information</h5>
             <div className="space-y-4">
+              {user.customerName && (
+                <div>
+                  <p className="text-sm text-[#7895b3] mb-1">Customer Name</p>
+                  <p className="text-base font-medium text-[#435970]">{user.customerName}</p>
+                </div>
+              )}
               <div>
                 <p className="text-sm text-[#7895b3] mb-1">Username</p>
                 <p className="text-base font-medium text-[#435970]">{user.name}</p>

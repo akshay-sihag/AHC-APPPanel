@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-config';
 import { prisma } from '@/lib/prisma';
+import { normalizeApiUrl, buildAuthHeaders } from '@/lib/woocommerce-helpers';
 
 // GET all app users (admin only)
 export async function GET(request: NextRequest) {
   try {
     // Check authentication and admin role using NextAuth
     const session = await getServerSession(authOptions);
-    
+
     if (!session || (session.user as any)?.role !== 'ADMIN') {
       return NextResponse.json(
         { error: 'Unauthorized. Admin access required.' },
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     // Build where clause
     const where: any = {};
-    
+
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
         { displayName: { contains: search, mode: 'insensitive' } },
       ];
     }
-    
+
     if (status) {
       where.status = status;
     }
@@ -48,11 +49,11 @@ export async function GET(request: NextRequest) {
         take: limit,
       }),
       prisma.appUser.count({ where }),
-      prisma.appUser.count({ 
-        where: { ...where, status: 'Active' } 
+      prisma.appUser.count({
+        where: { ...where, status: 'Active' }
       }),
-      prisma.appUser.count({ 
-        where: { ...where, status: 'Inactive' } 
+      prisma.appUser.count({
+        where: { ...where, status: 'Inactive' }
       }),
       // Get all filtered users for accurate average calculation
       prisma.appUser.findMany({
@@ -61,14 +62,78 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    // Batch-fetch WooCommerce customer names for users missing them
+    const usersNeedingWooName = users.filter(
+      u => u.woocommerceCustomerId && !u.wooCustomerName
+    );
+
+    if (usersNeedingWooName.length > 0) {
+      try {
+        const settings = await prisma.settings.findFirst({
+          select: {
+            woocommerceApiUrl: true,
+            woocommerceApiKey: true,
+            woocommerceApiSecret: true,
+          },
+        });
+
+        if (settings?.woocommerceApiUrl && settings?.woocommerceApiKey && settings?.woocommerceApiSecret) {
+          const apiUrl = normalizeApiUrl(settings.woocommerceApiUrl);
+          const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
+
+          const customerIds = usersNeedingWooName.map(u => u.woocommerceCustomerId!);
+          const customersUrl = `${apiUrl}/customers?include=${customerIds.join(',')}&per_page=${customerIds.length}`;
+
+          const response = await fetch(customersUrl, { method: 'GET', headers: authHeaders });
+
+          if (response.ok) {
+            const customers = await response.json();
+            if (Array.isArray(customers)) {
+              // Build a map of customerId -> full name
+              const nameMap = new Map<number, string>();
+              for (const c of customers) {
+                const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
+                if (fullName && c.id) {
+                  nameMap.set(c.id, fullName);
+                }
+              }
+
+              // Cache names in database and update local user objects
+              const updatePromises: Promise<any>[] = [];
+              for (const user of usersNeedingWooName) {
+                const name = nameMap.get(user.woocommerceCustomerId!);
+                if (name) {
+                  (user as any).wooCustomerName = name;
+                  updatePromises.push(
+                    prisma.appUser.update({
+                      where: { id: user.id },
+                      data: { wooCustomerName: name },
+                    })
+                  );
+                }
+              }
+              // Fire and forget - don't block response on cache writes
+              Promise.all(updatePromises).catch(err =>
+                console.error('Error caching WooCommerce customer names:', err)
+              );
+            }
+          }
+        }
+      } catch (err) {
+        // WooCommerce fetch failure shouldn't break the users endpoint
+        console.error('Error batch-fetching WooCommerce customer names:', err);
+      }
+    }
+
     // Format users for frontend
     const formattedUsers = users.map(user => ({
       id: user.id,
       name: user.name || user.displayName || user.email.split('@')[0],
       email: user.email,
+      customerName: user.wooCustomerName || null,
       status: user.status,
-      lastLogin: user.lastLoginAt 
-        ? formatTimeAgo(user.lastLoginAt) 
+      lastLogin: user.lastLoginAt
+        ? formatTimeAgo(user.lastLoginAt)
         : 'Never',
       weight: user.weight || 'N/A',
       goal: user.goal || 'N/A',

@@ -171,7 +171,8 @@ model AppUser {
   devices UserDevice[]
 
   // WooCommerce integration
-  woocommerceCustomerId Int? // Cached WooCommerce customer ID for faster API lookups
+  woocommerceCustomerId Int?    // Cached WooCommerce customer ID for faster API lookups
+  wooCustomerName       String? // Cached WooCommerce customer name (first + last)
 
   // Relations
   weightLogs              WeightLog[]

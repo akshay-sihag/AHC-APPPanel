@@ -8,6 +8,7 @@ type User = {
   id: string;
   name: string;
   email: string;
+  customerName?: string | null;
   status: string;
   lastLogin: string;
   weight: string;
@@ -284,10 +285,12 @@ export default function UsersPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="w-10 h-10 bg-[#435970] rounded-full flex items-center justify-center text-white font-semibold text-sm mr-3">
-                        {user.name.split(' ').map(n => n[0]).join('')}
+                        {(user.customerName || user.name).split(' ').map(n => n[0]).join('').slice(0, 2)}
                       </div>
                       <div>
-                        <div className="text-sm font-semibold text-[#435970]">{user.name}</div>
+                        <div className="text-sm font-semibold text-[#435970]">
+                          {user.customerName || user.name}
+                        </div>
                         <div className="text-sm text-[#7895b3]">{user.email}</div>
                       </div>
                     </div>
