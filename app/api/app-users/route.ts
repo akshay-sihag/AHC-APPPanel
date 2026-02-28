@@ -62,10 +62,8 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    // Batch-fetch WooCommerce customer names for users missing them
-    const usersNeedingWooName = users.filter(
-      u => u.woocommerceCustomerId && !u.wooCustomerName
-    );
+    // Batch-fetch WooCommerce customer names for users that have a customer ID but no cached name
+    const usersNeedingWooName = users.filter(u => u.woocommerceCustomerId && !u.wooCustomerName);
 
     if (usersNeedingWooName.length > 0) {
       try {
@@ -82,26 +80,22 @@ export async function GET(request: NextRequest) {
           const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
 
           const customerIds = usersNeedingWooName.map(u => u.woocommerceCustomerId!);
-          const customersUrl = `${apiUrl}/customers?include=${customerIds.join(',')}&per_page=${customerIds.length}`;
+          const res = await fetch(
+            `${apiUrl}/customers?include=${customerIds.join(',')}&per_page=${customerIds.length}`,
+            { method: 'GET', headers: authHeaders }
+          );
 
-          const response = await fetch(customersUrl, { method: 'GET', headers: authHeaders });
-
-          if (response.ok) {
-            const customers = await response.json();
+          if (res.ok) {
+            const customers = await res.json();
             if (Array.isArray(customers)) {
-              // Build a map of customerId -> full name
               const nameMap = new Map<number, string>();
               for (const c of customers) {
-                // Get name from billing details, fallback to shipping
-                const fullName =
+                const name =
                   [c.billing?.first_name, c.billing?.last_name].filter(Boolean).join(' ').trim() ||
                   [c.shipping?.first_name, c.shipping?.last_name].filter(Boolean).join(' ').trim();
-                if (fullName && c.id) {
-                  nameMap.set(c.id, fullName);
-                }
+                if (name && c.id) nameMap.set(c.id, name);
               }
 
-              // Cache names in database and update local user objects
               const updatePromises: Promise<any>[] = [];
               for (const user of usersNeedingWooName) {
                 const name = nameMap.get(user.woocommerceCustomerId!);
@@ -115,16 +109,16 @@ export async function GET(request: NextRequest) {
                   );
                 }
               }
-              // Fire and forget - don't block response on cache writes
-              Promise.all(updatePromises).catch(err =>
-                console.error('Error caching WooCommerce customer names:', err)
-              );
+              if (updatePromises.length > 0) {
+                Promise.all(updatePromises).catch(err =>
+                  console.error('Error caching WooCommerce customer names:', err)
+                );
+              }
             }
           }
         }
       } catch (err) {
-        // WooCommerce fetch failure shouldn't break the users endpoint
-        console.error('Error batch-fetching WooCommerce customer names:', err);
+        console.error('Error fetching WooCommerce customer names:', err);
       }
     }
 
