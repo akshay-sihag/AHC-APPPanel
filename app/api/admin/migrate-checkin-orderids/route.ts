@@ -11,12 +11,11 @@ import { normalizeApiUrl, buildAuthHeaders, getCustomerByEmailCached } from '@/l
  *
  * Query Parameters:
  * - dryRun (string, optional): Set to "true" to preview changes without updating
+ * - limit (number, optional): Max number of users to process per call (default: 5)
+ * - offset (number, optional): Number of users to skip (default: 0)
  *
- * Logic:
- * 1. Find all check-in records where orderId is null
- * 2. Group by user email
- * 3. For each user, fetch WooCommerce subscriptions and their orders
- * 4. Match each check-in to the best order based on medication name and date
+ * Use limit/offset to paginate through users and avoid gateway timeouts.
+ * Example: first call ?limit=5&offset=0, then ?limit=5&offset=5, etc.
  */
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -33,6 +32,9 @@ export async function POST(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const dryRun = searchParams.get('dryRun') === 'true';
+    const limit = Math.min(parseInt(searchParams.get('limit') || '5'), 50);
+    const offset = parseInt(searchParams.get('offset') || '0');
+    const filterEmail = searchParams.get('email')?.toLowerCase().trim() || null;
 
     // Get WooCommerce settings
     const settings = await prisma.settings.findUnique({
@@ -54,13 +56,17 @@ export async function POST(request: NextRequest) {
     const apiUrl = normalizeApiUrl(settings.woocommerceApiUrl);
     const authHeaders = buildAuthHeaders(settings.woocommerceApiKey, settings.woocommerceApiSecret);
 
-    // Find all check-ins without orderId
-    const checkInsToMigrate = await prisma.dailyCheckIn.findMany({
-      where: { orderId: null },
+    // Find all check-ins without orderId (optionally filtered by email)
+    const allCheckIns = await prisma.dailyCheckIn.findMany({
+      where: {
+        orderId: null,
+        ...(filterEmail && { appUser: { email: filterEmail } }),
+      },
       select: {
         id: true,
         date: true,
         medicationName: true,
+        appUserId: true,
         appUser: {
           select: { email: true, wpUserId: true },
         },
@@ -68,11 +74,30 @@ export async function POST(request: NextRequest) {
       orderBy: { date: 'asc' },
     });
 
-    if (checkInsToMigrate.length === 0) {
+    // Group check-ins by user email
+    const byUser = new Map<string, typeof allCheckIns>();
+    for (const checkIn of allCheckIns) {
+      const email = checkIn.appUser.email;
+      if (!byUser.has(email)) {
+        byUser.set(email, []);
+      }
+      byUser.get(email)!.push(checkIn);
+    }
+
+    const allUserEmails = Array.from(byUser.keys()).sort();
+    const totalUsers = allUserEmails.length;
+
+    if (allCheckIns.length === 0 || offset >= totalUsers) {
       return NextResponse.json({
         success: true,
         dryRun,
-        total: 0,
+        totalCheckIns: allCheckIns.length,
+        totalUsers,
+        usersProcessed: 0,
+        offset,
+        limit,
+        hasMore: false,
+        nextOffset: null,
         updated: 0,
         skipped: 0,
         noMatch: 0,
@@ -82,23 +107,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Group check-ins by user email
-    const byUser = new Map<string, typeof checkInsToMigrate>();
-    for (const checkIn of checkInsToMigrate) {
-      const email = checkIn.appUser.email;
-      if (!byUser.has(email)) {
-        byUser.set(email, []);
-      }
-      byUser.get(email)!.push(checkIn);
-    }
+    // Slice the users for this batch
+    const batchEmails = allUserEmails.slice(offset, offset + limit);
 
-    const details: { checkInId: string; date: string; medication: string; matchedOrderId: string | null; error?: string }[] = [];
+    const details: { checkInId: string; date: string; medication: string; email: string; matchedOrderId: string | null; error?: string }[] = [];
     let updated = 0;
     let noMatch = 0;
     let errors = 0;
 
-    // Process each user
-    for (const [email, userCheckIns] of byUser) {
+    // Process each user in this batch
+    for (const email of batchEmails) {
+      const userCheckIns = byUser.get(email)!;
       try {
         // Fetch all orders for this user from WooCommerce
         const orders = await fetchAllOrdersForUser(apiUrl, authHeaders, email);
@@ -110,6 +129,7 @@ export async function POST(request: NextRequest) {
               checkInId: checkIn.id,
               date: checkIn.date,
               medication: checkIn.medicationName,
+              email,
               matchedOrderId: null,
             });
           }
@@ -133,6 +153,7 @@ export async function POST(request: NextRequest) {
                 checkInId: checkIn.id,
                 date: checkIn.date,
                 medication: checkIn.medicationName,
+                email,
                 matchedOrderId: String(matchedOrder.id),
               });
             } else {
@@ -141,6 +162,7 @@ export async function POST(request: NextRequest) {
                 checkInId: checkIn.id,
                 date: checkIn.date,
                 medication: checkIn.medicationName,
+                email,
                 matchedOrderId: null,
               });
             }
@@ -150,6 +172,7 @@ export async function POST(request: NextRequest) {
               checkInId: checkIn.id,
               date: checkIn.date,
               medication: checkIn.medicationName,
+              email,
               matchedOrderId: null,
               error: err.message,
             });
@@ -163,6 +186,7 @@ export async function POST(request: NextRequest) {
             checkInId: checkIn.id,
             date: checkIn.date,
             medication: checkIn.medicationName,
+            email,
             matchedOrderId: null,
             error: `Failed to fetch orders for ${email}: ${err.message}`,
           });
@@ -170,10 +194,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const nextOffset = offset + limit;
+    const hasMore = nextOffset < totalUsers;
+
     return NextResponse.json({
       success: true,
       dryRun,
-      total: checkInsToMigrate.length,
+      totalCheckIns: allCheckIns.length,
+      totalUsers,
+      usersProcessed: batchEmails.length,
+      offset,
+      limit,
+      hasMore,
+      nextOffset: hasMore ? nextOffset : null,
       updated,
       skipped: 0,
       noMatch,
