@@ -270,6 +270,7 @@ export async function GET(request: NextRequest) {
               name: true,
               displayName: true,
               wpUserId: true,
+              initialWeight: true,
             },
           },
         },
@@ -290,7 +291,8 @@ export async function GET(request: NextRequest) {
       logs: logs.map((log, index) => {
         // Compute change on the fly: logs sorted desc, so next in array is chronologically previous
         const prevLog = allFetched[index + 1] || null;
-        const previousWeight = prevLog ? prevLog.weight : null;
+        const initialW = log.appUser?.initialWeight ? parseFloat(log.appUser.initialWeight) : null;
+        const previousWeight = prevLog ? prevLog.weight : (initialW && !isNaN(initialW) ? initialW : null);
         const changeRaw = previousWeight !== null ? log.weight - previousWeight : null;
         const change = changeRaw !== null ? Math.round(changeRaw * 10) / 10 : null;
         const changeType = change !== null ? (change > 0 ? 'increase' : change < 0 ? 'decrease' : 'no-change') : null;

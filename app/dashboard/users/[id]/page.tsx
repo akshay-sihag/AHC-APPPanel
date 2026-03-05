@@ -886,9 +886,7 @@ export default function UserDetailsPage() {
                               {log.changeType === 'decrease' ? 'Decreased' : log.changeType === 'increase' ? 'Increased' : 'No Change'}
                             </span>
                           ) : (
-                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-[#dfedfb] text-[#7895b3]">
-                              First Log
-                            </span>
+                            <span className="text-sm text-gray-400">-</span>
                           )}
                         </td>
                       </tr>
