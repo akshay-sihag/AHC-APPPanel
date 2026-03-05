@@ -96,33 +96,7 @@ export async function POST(request: NextRequest) {
     // Parse date or use current date
     const logDate = date ? new Date(date) : new Date();
 
-    // Get the previous weight log for this user
-    const previousLog = await prisma.weightLog.findFirst({
-      where: {
-        appUserId: appUser.id,
-      },
-      orderBy: { date: 'desc' },
-    });
-
-    // Use previous log weight (null for the first log entry)
-    const previousWeight = previousLog?.weight || null;
-
-    const changeRaw = previousWeight !== null ? weightNum - previousWeight : null;
-    // Round change to 1 decimal place to avoid floating point precision issues
-    const change = changeRaw !== null ? Math.round(changeRaw * 10) / 10 : null;
-
-    let changeType: string | null = null;
-    if (change !== null) {
-      if (change > 0) {
-        changeType = 'increase';
-      } else if (change < 0) {
-        changeType = 'decrease';
-      } else {
-        changeType = 'no-change';
-      }
-    }
-
-    // Create weight log with relation
+    // Create weight log - just store weight + date, no chain maintenance needed
     const weightLog = await prisma.weightLog.create({
       data: {
         appUserId: appUser.id,
@@ -131,20 +105,6 @@ export async function POST(request: NextRequest) {
         userName: userName || appUser.name || appUser.displayName || null,
         date: logDate,
         weight: weightNum,
-        previousWeight: previousWeight,
-        change: change,
-        changeType: changeType,
-      },
-      include: {
-        appUser: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            displayName: true,
-            wpUserId: true,
-          },
-        },
       },
     });
 
@@ -158,9 +118,6 @@ export async function POST(request: NextRequest) {
         userName: weightLog.userName,
         date: weightLog.date.toISOString().split('T')[0],
         weight: weightLog.weight,
-        previousWeight: weightLog.previousWeight,
-        change: weightLog.change !== null ? Math.round(weightLog.change * 10) / 10 : null,
-        changeType: weightLog.changeType,
         createdAt: weightLog.createdAt.toISOString(),
       },
     }, { status: 201 });
@@ -301,8 +258,8 @@ export async function GET(request: NextRequest) {
     // Log the query for debugging
     console.log('Fetching weight logs with query:', JSON.stringify(where, null, 2));
 
-    // Get weight logs with pagination and relation
-    const [logs, total] = await Promise.all([
+    // Fetch one extra record to compute change for the last item on this page
+    const [allFetched, total] = await Promise.all([
       prisma.weightLog.findMany({
         where,
         include: {
@@ -318,35 +275,47 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { date: 'desc' },
         skip,
-        take: limit,
+        take: limit + 1,
       }),
       prisma.weightLog.count({ where }),
     ]);
+
+    // The actual page logs (without the extra)
+    const logs = allFetched.slice(0, limit);
 
     console.log(`Found ${total} weight logs, returning ${logs.length} logs`);
 
     return NextResponse.json({
       success: true,
-      logs: logs.map(log => ({
-        id: log.id,
-        userId: log.userId,
-        userName: log.userName || (log.appUser ? (log.appUser.name || log.appUser.displayName || log.appUser.email.split('@')[0]) : log.userEmail.split('@')[0]),
-        userEmail: log.userEmail,
-        appUser: log.appUser ? {
-          id: log.appUser.id,
-          email: log.appUser.email,
-          name: log.appUser.name,
-          displayName: log.appUser.displayName,
-          wpUserId: log.appUser.wpUserId,
-        } : null,
-        date: log.date.toISOString().split('T')[0],
-        weight: log.weight,
-        previousWeight: log.previousWeight,
-        change: log.change !== null ? Math.round(log.change * 10) / 10 : null,
-        changeType: log.changeType,
-        createdAt: log.createdAt.toISOString(),
-        updatedAt: log.updatedAt.toISOString(),
-      })),
+      logs: logs.map((log, index) => {
+        // Compute change on the fly: logs sorted desc, so next in array is chronologically previous
+        const prevLog = allFetched[index + 1] || null;
+        const previousWeight = prevLog ? prevLog.weight : null;
+        const changeRaw = previousWeight !== null ? log.weight - previousWeight : null;
+        const change = changeRaw !== null ? Math.round(changeRaw * 10) / 10 : null;
+        const changeType = change !== null ? (change > 0 ? 'increase' : change < 0 ? 'decrease' : 'no-change') : null;
+
+        return {
+          id: log.id,
+          userId: log.userId,
+          userName: log.userName || (log.appUser ? (log.appUser.name || log.appUser.displayName || log.appUser.email.split('@')[0]) : log.userEmail.split('@')[0]),
+          userEmail: log.userEmail,
+          appUser: log.appUser ? {
+            id: log.appUser.id,
+            email: log.appUser.email,
+            name: log.appUser.name,
+            displayName: log.appUser.displayName,
+            wpUserId: log.appUser.wpUserId,
+          } : null,
+          date: log.date.toISOString().split('T')[0],
+          weight: log.weight,
+          previousWeight,
+          change,
+          changeType,
+          createdAt: log.createdAt.toISOString(),
+          updatedAt: log.updatedAt.toISOString(),
+        };
+      }),
       pagination: {
         page,
         limit,

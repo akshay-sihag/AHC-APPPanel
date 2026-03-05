@@ -95,8 +95,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get weight logs with pagination and relation
-    const [logs, total] = await Promise.all([
+    // Fetch one extra record to compute change for the last item on this page
+    const [allFetched, total, uniqueUsers, todayLogsCount] = await Promise.all([
       prisma.weightLog.findMany({
         where,
         include: {
@@ -112,44 +112,36 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { date: 'desc' },
         skip,
-        take: limit,
+        take: limit + 1,
       }),
       prisma.weightLog.count({ where }),
+      prisma.weightLog.findMany({
+        where,
+        select: { appUserId: true },
+        distinct: ['appUserId'],
+      }),
+      prisma.weightLog.count({
+        where: {
+          ...where,
+          date: {
+            gte: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })(),
+            lt: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 1); return d; })(),
+          },
+        },
+      }),
     ]);
 
-    // Calculate stats
-    const allLogs = await prisma.weightLog.findMany({
-      where,
-      select: { change: true, changeType: true },
-    });
+    const logs = allFetched.slice(0, limit);
 
-    const decreaseLogs = allLogs.filter(log => log.changeType === 'decrease');
-    const avgWeightLoss = decreaseLogs.length > 0
-      ? decreaseLogs.reduce((sum, log) => sum + Math.abs(log.change || 0), 0) / decreaseLogs.length
-      : 0;
+    // Compute changes on the fly and calculate stats
+    const mappedLogs = logs.map((log, index) => {
+      const prevLog = allFetched[index + 1] || null;
+      const previousWeight = prevLog ? prevLog.weight : null;
+      const changeRaw = previousWeight !== null ? log.weight - previousWeight : null;
+      const change = changeRaw !== null ? Math.round(changeRaw * 10) / 10 : null;
+      const changeType = change !== null ? (change > 0 ? 'increase' : change < 0 ? 'decrease' : 'no-change') : null;
 
-    const uniqueUsers = await prisma.weightLog.findMany({
-      where,
-      select: { appUserId: true },
-      distinct: ['appUserId'],
-    });
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const todayLogsCount = await prisma.weightLog.count({
-      where: {
-        ...where,
-        date: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-    });
-
-    return NextResponse.json({
-      logs: logs.map(log => ({
+      return {
         id: log.id,
         userId: log.userId,
         userName: log.userName || log.appUser.name || log.appUser.displayName || log.appUser.email.split('@')[0],
@@ -163,12 +155,21 @@ export async function GET(request: NextRequest) {
         },
         date: log.date.toISOString().split('T')[0],
         weight: log.weight,
-        previousWeight: log.previousWeight,
-        change: log.change !== null ? Math.round(log.change * 10) / 10 : null,
-        changeType: log.changeType,
+        previousWeight,
+        change,
+        changeType,
         createdAt: log.createdAt.toISOString(),
         updatedAt: log.updatedAt.toISOString(),
-      })),
+      };
+    });
+
+    const decreaseLogs = mappedLogs.filter(log => log.changeType === 'decrease');
+    const avgWeightLoss = decreaseLogs.length > 0
+      ? decreaseLogs.reduce((sum, log) => sum + Math.abs(log.change || 0), 0) / decreaseLogs.length
+      : 0;
+
+    return NextResponse.json({
+      logs: mappedLogs,
       pagination: {
         page,
         limit,

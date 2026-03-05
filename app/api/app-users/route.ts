@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
       weight: user.weight || 'N/A',
       goal: user.goal || 'N/A',
       initialWeight: user.initialWeight || 'N/A',
+      initialWeightDate: user.initialWeightDate || null,
       weightSet: user.weightSet,
       tasksToday: user.tasksToday,
       joinDate: user.createdAt.toISOString().split('T')[0],

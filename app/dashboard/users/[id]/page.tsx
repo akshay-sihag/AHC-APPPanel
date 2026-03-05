@@ -809,7 +809,7 @@ export default function UserDetailsPage() {
             <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-[#435970]"></div>
             <p className="ml-3 text-[#7895b3]">Loading weight logs...</p>
           </div>
-        ) : weightLogs.length === 0 ? (
+        ) : weightLogs.length === 0 && !(user.initialWeight && user.initialWeight !== 'N/A') ? (
           <p className="text-sm text-[#7895b3] text-center py-8">
             No weight logs found. Weight logs will appear here when the user submits data from the app.
           </p>
@@ -839,23 +839,19 @@ export default function UserDetailsPage() {
                 <tbody className="divide-y divide-[#dfedfb]">
                   {weightLogs
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((log) => {
-                      const isInitialLog = log.previousWeight === null && log.change === null;
-                      return (
-                      <tr key={log.id} className={`transition-colors ${isInitialLog ? 'bg-gray-50 text-gray-400' : 'hover:bg-[#dfedfb]/20'}`}>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${isInitialLog ? 'text-gray-400' : 'text-[#435970]'}`}>
+                    .map((log) => (
+                      <tr key={log.id} className="transition-colors hover:bg-[#dfedfb]/20">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#435970]">
                           {new Date(log.date).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`text-sm font-semibold ${isInitialLog ? 'text-gray-400' : 'text-[#435970]'}`}>{log.weight} lbs</span>
+                          <span className="text-sm font-semibold text-[#435970]">{log.weight} lbs</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                          {isInitialLog ? '-' : log.previousWeight ? `${log.previousWeight} lbs` : 'N/A'}
+                          {log.previousWeight ? `${log.previousWeight} lbs` : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {isInitialLog ? (
-                            <span className="text-sm text-gray-400">-</span>
-                          ) : log.change !== null && log.change !== 0 ? (
+                          {log.change !== null && log.change !== 0 ? (
                             <div className="flex items-center gap-2">
                               {log.changeType === 'decrease' ? (
                                 <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -872,16 +868,14 @@ export default function UserDetailsPage() {
                                 {log.changeType === 'decrease' ? '-' : '+'}{Math.abs(log.change)} lbs
                               </span>
                             </div>
-                          ) : (
+                          ) : log.change === 0 ? (
                             <span className="text-sm text-[#7895b3]">No change</span>
+                          ) : (
+                            <span className="text-sm text-gray-400">-</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {isInitialLog ? (
-                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-400">
-                              Initial Weight
-                            </span>
-                          ) : log.changeType ? (
+                          {log.changeType ? (
                             <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                               log.changeType === 'decrease'
                                 ? 'bg-green-100 text-green-700'
@@ -893,13 +887,32 @@ export default function UserDetailsPage() {
                             </span>
                           ) : (
                             <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-[#dfedfb] text-[#7895b3]">
-                              N/A
+                              First Log
                             </span>
                           )}
                         </td>
                       </tr>
-                      );
-                    })}
+                    ))}
+                  {/* Show initial weight as the last row on the last page */}
+                  {user && user.initialWeight && user.initialWeight !== 'N/A' && weightLogsPagination.page >= weightLogsPagination.totalPages && (
+                    <tr className="bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                        {user.initialWeightDate ? new Date(user.initialWeightDate).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm font-semibold text-gray-400">{user.initialWeight} lbs</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">-</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-400">-</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-400">
+                          Initial Weight
+                        </span>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
