@@ -248,7 +248,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { wpUserId, email, buttonType = 'default', deviceInfo, medicationName = 'default', nextDate } = body;
+    const { wpUserId, email, buttonType = 'default', deviceInfo, medicationName = 'default', nextDate, orderId } = body;
 
     if (!wpUserId && !email) {
       return NextResponse.json(
@@ -313,6 +313,7 @@ export async function POST(request: NextRequest) {
           buttonType,
           medicationName,
           nextDate: nextDate || undefined,
+          orderId: orderId || undefined,
           deviceInfo: deviceInfo || undefined,
           ipAddress: ipAddress || undefined,
           ...(createdAt && { createdAt }),
@@ -347,6 +348,7 @@ export async function POST(request: NextRequest) {
           buttonType: checkIn.buttonType,
           medicationName: checkIn.medicationName,
           nextDate: checkIn.nextDate,
+          orderId: checkIn.orderId ?? null,
           createdAt: checkIn.createdAt.toISOString(),
         },
         scheduledReminders: nextDate ? {
@@ -383,6 +385,7 @@ export async function POST(request: NextRequest) {
             buttonType: existingCheckIn.buttonType,
             medicationName: existingCheckIn.medicationName,
             nextDate: existingCheckIn.nextDate,
+            orderId: existingCheckIn.orderId ?? null,
             createdAt: existingCheckIn.createdAt.toISOString(),
           } : null,
           user: {

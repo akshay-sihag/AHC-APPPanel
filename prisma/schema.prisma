@@ -500,6 +500,7 @@ model DailyCheckIn {
   buttonType     String  @default("default") // Type of button pressed (for multiple buttons)
   medicationName String  @default("default") // Medication name for the check-in
   nextDate       String? // Next scheduled date in YYYY-MM-DD format for reminder notifications
+  orderId        String? // Optional order ID associated with this check-in
 
   // Metadata
   deviceInfo String? // Optional device info

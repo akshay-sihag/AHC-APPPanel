@@ -115,13 +115,14 @@ export async function GET(request: NextRequest) {
       select: {
         date: true,
         medicationName: true,
+        orderId: true,
       },
       orderBy: { date: 'asc' },
     });
 
     // Build simple date array (unique dates)
     const datesSet = new Set<string>();
-    const byDate: Record<string, string[]> = {};
+    const byDate: Record<string, { medication: string; orderId: string | null }[]> = {};
 
     for (const checkIn of checkIns) {
       datesSet.add(checkIn.date);
@@ -129,8 +130,14 @@ export async function GET(request: NextRequest) {
       if (!byDate[checkIn.date]) {
         byDate[checkIn.date] = [];
       }
-      if (!byDate[checkIn.date].includes(checkIn.medicationName)) {
-        byDate[checkIn.date].push(checkIn.medicationName);
+      const alreadyExists = byDate[checkIn.date].some(
+        (entry) => entry.medication === checkIn.medicationName && entry.orderId === (checkIn.orderId ?? null)
+      );
+      if (!alreadyExists) {
+        byDate[checkIn.date].push({
+          medication: checkIn.medicationName,
+          orderId: checkIn.orderId ?? null,
+        });
       }
     }
 
