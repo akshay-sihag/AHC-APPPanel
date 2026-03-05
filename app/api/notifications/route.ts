@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, image, url, isActive } = body;
+    const { title, description, image, url, isActive, batchSize, batchDelayMs, targetAppUserId } = body;
 
     if (!title || !description) {
       return NextResponse.json(
@@ -59,6 +59,9 @@ export async function POST(request: NextRequest) {
         image: image || null,
         url: url && url.trim() ? url.trim() : null,
         isActive: isActive !== undefined ? isActive : true,
+        batchSize: batchSize && Number(batchSize) > 0 ? Number(batchSize) : 5,
+        batchDelayMs: batchDelayMs && Number(batchDelayMs) >= 0 ? Number(batchDelayMs) : 1000,
+        targetAppUserId: targetAppUserId || null,
       },
     });
 

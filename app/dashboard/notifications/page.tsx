@@ -47,10 +47,19 @@ export default function NotificationsPage() {
     image: '',
     url: '',
     isActive: true,
+    batchSize: 5,
+    batchDelayMs: 1000,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Target user search state
+  const [targetUser, setTargetUser] = useState<{ id: string; email: string; name: string | null; displayName: string | null; wpUserId: string } | null>(null);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState<{ id: string; email: string; name: string | null; displayName: string | null; wpUserId: string; status: string }[]>([]);
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   // Fetch notifications from API
   const fetchNotifications = useCallback(async () => {
@@ -129,6 +138,35 @@ export default function NotificationsPage() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notifications.filter(n => n.sendStatus === 'queued' || n.sendStatus === 'sending').map(n => n.id).join(',')]);
+
+  // Debounced user search
+  useEffect(() => {
+    if (userSearchQuery.trim().length < 2) {
+      setUserSearchResults([]);
+      setShowUserDropdown(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setUserSearchLoading(true);
+      try {
+        const res = await fetch(`/api/app-users/search?q=${encodeURIComponent(userSearchQuery.trim())}`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUserSearchResults(data);
+          setShowUserDropdown(true);
+        }
+      } catch {
+        // Ignore search errors
+      } finally {
+        setUserSearchLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [userSearchQuery]);
 
   const handleRetrySend = async (id: string) => {
     try {
@@ -282,9 +320,15 @@ export default function NotificationsPage() {
       image: '',
       url: '',
       isActive: true,
+      batchSize: 5,
+      batchDelayMs: 1000,
     });
     setImageFile(null);
     setImagePreview(null);
+    setTargetUser(null);
+    setUserSearchQuery('');
+    setUserSearchResults([]);
+    setShowUserDropdown(false);
     setIsModalOpen(true);
   };
 
@@ -296,9 +340,15 @@ export default function NotificationsPage() {
       image: notification.image || '',
       url: notification.url || '',
       isActive: notification.isActive,
+      batchSize: 5,
+      batchDelayMs: 1000,
     });
     setImageFile(null);
     setImagePreview(notification.image ? getImageUrl(notification.image) : null);
+    setTargetUser(null);
+    setUserSearchQuery('');
+    setUserSearchResults([]);
+    setShowUserDropdown(false);
     setIsModalOpen(true);
   };
 
@@ -311,9 +361,15 @@ export default function NotificationsPage() {
       image: '',
       url: '',
       isActive: true,
+      batchSize: 5,
+      batchDelayMs: 1000,
     });
     setImageFile(null);
     setImagePreview(null);
+    setTargetUser(null);
+    setUserSearchQuery('');
+    setUserSearchResults([]);
+    setShowUserDropdown(false);
   };
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -383,6 +439,9 @@ export default function NotificationsPage() {
           image: imageUrl,
           url: formData.url.trim() || null,
           isActive: formData.isActive,
+          batchSize: formData.batchSize,
+          batchDelayMs: formData.batchDelayMs,
+          targetAppUserId: targetUser?.id || null,
         }),
         credentials: 'include',
       });
@@ -874,6 +933,120 @@ export default function NotificationsPage() {
                 <p className="text-xs text-[#7895b3] mt-1">
                   Mobile app route to navigate when notification is tapped (leave empty for no navigation)
                 </p>
+              </div>
+
+              {/* Target User (for testing) */}
+              <div className="relative">
+                <label className="block text-sm font-medium text-[#435970] mb-2">
+                  Send to Specific User (Optional)
+                </label>
+                {targetUser ? (
+                  <div className="flex items-center gap-2 px-4 py-2 border border-[#dfedfb] rounded-lg bg-[#dfedfb]/30">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-[#435970]">{targetUser.displayName || targetUser.name || 'Unknown'}</span>
+                      <span className="text-xs text-[#7895b3] ml-2">{targetUser.email}</span>
+                      <span className="text-xs text-[#7895b3] ml-2">({targetUser.id})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetUser(null);
+                        setUserSearchQuery('');
+                      }}
+                      className="text-red-400 hover:text-red-600 flex-shrink-0"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      onFocus={() => { if (userSearchResults.length > 0) setShowUserDropdown(true); }}
+                      className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970] placeholder:text-[#7895b3]"
+                      placeholder="Search by email, name, user ID, or WP ID..."
+                    />
+                    {userSearchLoading && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#435970]"></div>
+                      </div>
+                    )}
+                    {showUserDropdown && userSearchResults.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-[#dfedfb] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {userSearchResults.map((user) => (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => {
+                              setTargetUser(user);
+                              setUserSearchQuery('');
+                              setShowUserDropdown(false);
+                              setUserSearchResults([]);
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-[#dfedfb]/50 transition-colors border-b border-[#dfedfb] last:border-b-0"
+                          >
+                            <div className="text-sm font-medium text-[#435970]">
+                              {user.displayName || user.name || 'Unknown'}
+                              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${user.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {user.status}
+                              </span>
+                            </div>
+                            <div className="text-xs text-[#7895b3]">
+                              {user.email} | ID: {user.id} | WP: {user.wpUserId}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {showUserDropdown && userSearchResults.length === 0 && userSearchQuery.trim().length >= 2 && !userSearchLoading && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-[#dfedfb] rounded-lg shadow-lg px-4 py-3 text-sm text-[#7895b3]">
+                        No users found
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-[#7895b3] mt-1">
+                  Leave empty to send to all users. Select a user to test the notification first.
+                </p>
+              </div>
+
+              {/* Batch Settings */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="batchSize" className="block text-sm font-medium text-[#435970] mb-2">
+                    Batch Size
+                  </label>
+                  <input
+                    type="number"
+                    id="batchSize"
+                    min={1}
+                    max={50}
+                    value={formData.batchSize}
+                    onChange={(e) => setFormData({ ...formData, batchSize: Math.max(1, Math.min(50, parseInt(e.target.value) || 5)) })}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
+                  />
+                  <p className="text-xs text-[#7895b3] mt-1">Notifications sent per batch (1-50)</p>
+                </div>
+                <div>
+                  <label htmlFor="batchDelayMs" className="block text-sm font-medium text-[#435970] mb-2">
+                    Delay Between Batches (ms)
+                  </label>
+                  <input
+                    type="number"
+                    id="batchDelayMs"
+                    min={0}
+                    max={10000}
+                    step={100}
+                    value={formData.batchDelayMs}
+                    onChange={(e) => setFormData({ ...formData, batchDelayMs: Math.max(0, Math.min(10000, parseInt(e.target.value) || 1000)) })}
+                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
+                  />
+                  <p className="text-xs text-[#7895b3] mt-1">Pause in ms between batches (0-10000)</p>
+                </div>
               </div>
 
               {/* Active Status */}

@@ -49,6 +49,11 @@ export async function POST(
       }, { status: 409 });
     }
 
+    // Determine if this is a retry (previous send had failures with retryable tokens)
+    const isRetry = (notification.sendStatus === 'failed' || notification.sendStatus === 'partial')
+      && notification.failedTokens
+      && notification.failureCount > 0;
+
     // Reset progress and queue for background send
     await prisma.notification.update({
       where: { id: notification.id },
@@ -56,21 +61,24 @@ export async function POST(
         sendStatus: 'queued',
         sendProgress: 0,
         sendTotal: 0,
-        successCount: 0,
+        successCount: isRetry ? notification.successCount : 0,
         failureCount: 0,
         sendErrors: null,
         sendStartedAt: null,
         sendCompletedAt: null,
+        // Keep failedTokens so processNotificationSend can read them for retry
       },
     });
 
     after(async () => {
-      await processNotificationSend(notification.id);
+      await processNotificationSend(notification.id, !!isRetry);
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Push notification sending started in background',
+      message: isRetry
+        ? `Retrying ${notification.failureCount} failed notification(s) in background`
+        : 'Push notification sending started in background',
       sendStatus: 'queued',
     });
   } catch (error) {

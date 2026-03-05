@@ -317,6 +317,11 @@ model Notification {
   icon   String? // Icon identifier for mobile app (e.g., ic_order_completed)
   source String  @default("admin") // admin, webhook, system
 
+  // Send configuration (customizable per notification)
+  batchSize       Int       @default(5) // Number of tokens per batch
+  batchDelayMs    Int       @default(1000) // Delay in ms between batches
+  targetAppUserId String?   // If set, send only to this user (for testing)
+
   // Send progress tracking (background processing)
   sendStatus      String    @default("idle") // 'idle' | 'queued' | 'sending' | 'sent' | 'failed' | 'partial'
   sendProgress    Int       @default(0) // Number of tokens processed so far
@@ -324,6 +329,7 @@ model Notification {
   successCount    Int       @default(0) // Successful sends
   failureCount    Int       @default(0) // Failed sends
   sendErrors      String?   @db.Text // JSON array of last 10 error messages
+  failedTokens    String?   @db.Text // JSON array of FCM tokens that failed (for retry)
   sendStartedAt   DateTime?
   sendCompletedAt DateTime?
 

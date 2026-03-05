@@ -14,6 +14,7 @@ type User = {
   lastLogin: string;
   weight: string;
   initialWeight: string;
+  initialWeightDate?: string | null;
   goal: string;
   joinDate: string;
   phone?: string;
@@ -385,12 +386,27 @@ export default function UserDetailsPage() {
                 <p className="text-sm text-[#7895b3] mb-1">Starting Weight</p>
                 <p className="text-base font-medium text-[#435970]">
                   {formatWeight(user.initialWeight)}
+                  {user.initialWeightDate && (
+                    <span className="text-sm text-[#7895b3] font-normal ml-1">
+                      (on {new Date(user.initialWeightDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })})
+                    </span>
+                  )}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-[#7895b3] mb-1">Current Weight</p>
                 <p className="text-base font-medium text-[#435970]">
                   {formatWeight(user.weight)}
+                  {(() => {
+                    const latestLog = weightLogs
+                      .filter(log => log.previousWeight !== null || log.change !== null)
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                    return latestLog ? (
+                      <span className="text-sm text-[#7895b3] font-normal ml-1">
+                        (as of {new Date(latestLog.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })})
+                      </span>
+                    ) : null;
+                  })()}
                 </p>
               </div>
               <div>
