@@ -95,9 +95,9 @@ export async function GET(request: NextRequest) {
       startDate = new Date(year, month - 1, 1);
       endDate = new Date(year, month - 1 + monthsCount, 0); // Last day of the last month
     } else {
-      // Default: current month + requested months
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + monthsCount, 0);
+      // Default: go back N months from current month
+      startDate = new Date(now.getFullYear(), now.getMonth() - monthsCount + 1, 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
     }
 
     const startDateStr = startDate.toISOString().split('T')[0];
