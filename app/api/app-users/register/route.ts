@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
       weight,           // Current weight in lbs
       goal,             // Goal weight in lbs
       initialWeight,    // Initial weight in lbs
+      initialWeightDate, // Date when initial weight was recorded (ISO 8601)
       weightSet         // Whether weight data has been set
     } = body;
 
@@ -107,6 +108,7 @@ export async function POST(request: NextRequest) {
           weight: weight !== undefined ? weight : existingUser.weight,
           goal: goal !== undefined ? goal : existingUser.goal,
           initialWeight: initialWeight !== undefined ? initialWeight : existingUser.initialWeight,
+          initialWeightDate: initialWeightDate !== undefined ? initialWeightDate : existingUser.initialWeightDate,
           weightSet: weightSet !== undefined ? weightSet : existingUser.weightSet,
           // Update login tracking
           lastLoginAt: new Date(),
@@ -142,6 +144,7 @@ export async function POST(request: NextRequest) {
         weight: weight,
         goal: goal,
         initialWeight: initialWeight,
+        initialWeightDate: initialWeightDate,
         weightSet: weightSet !== undefined ? weightSet : false,
         lastLoginAt: new Date(),
         lastLoginIp: clientIp,
