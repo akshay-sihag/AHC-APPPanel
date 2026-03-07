@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
           id: true,
           title: true,
           tagline: true,
-          // description excluded for list view per API_PAYLOAD_REQUIREMENTS.md
+          description: true,
           tags: true,
           featuredImage: true,
           createdAt: true,
@@ -170,8 +170,6 @@ export async function GET(request: NextRequest) {
     // Apply translations
     const tBlogs = await applyTranslationsBatch(blogs as any[], 'blog', 'id', locale);
 
-    // Return only required fields per API_PAYLOAD_REQUIREMENTS.md (Section 11)
-    // List: id, title, tagline, featuredImage, createdAt, tags
     return NextResponse.json({
       success: true,
       locale,
@@ -181,7 +179,8 @@ export async function GET(request: NextRequest) {
           id: blog.id,
           title: tBlog.title,
           tagline: tBlog.tagline,
-          featuredImage: getImageUrl(blog.featuredImage, requestUrl, true), // Force absolute URL for mobile
+          description: tBlog.description,
+          featuredImage: getImageUrl(blog.featuredImage, requestUrl, true),
           createdAt: blog.createdAt.toISOString(),
           tags: blog.tags,
         };
