@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
             id: true,
             title: true,
             tagline: true,
+            description: true,
             image: true,
             price: true,
             url: true,

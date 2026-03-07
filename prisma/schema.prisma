@@ -240,6 +240,7 @@ model MedicineCategory {
   title   String
   tagline String?
   icon    String? // Icon image path
+  order   Int     @default(0) // Manual sort order
 
   // Relations
   medicines Medicine[]
