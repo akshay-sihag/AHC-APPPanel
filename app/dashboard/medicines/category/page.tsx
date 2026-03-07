@@ -34,6 +34,43 @@ export default function CategoryPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [pendingTranslations, setPendingTranslations] = useState<{locale: string; field: string; value: string}[]>([]);
 
+  // Drag-and-drop state
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+
+  const handleDragStart = (id: number) => setDragId(id);
+  const handleDragOver = (e: React.DragEvent, id: number) => {
+    e.preventDefault();
+    if (id !== dragId) setDragOverId(id);
+  };
+  const handleDragLeave = () => setDragOverId(null);
+  const handleCategoryDrop = async (e: React.DragEvent, targetId: number) => {
+    e.preventDefault();
+    setDragOverId(null);
+    if (!dragId || dragId === targetId) { setDragId(null); return; }
+    const newList = [...categories];
+    const fromIdx = newList.findIndex(c => c.id === dragId);
+    const toIdx = newList.findIndex(c => c.id === targetId);
+    const [moved] = newList.splice(fromIdx, 1);
+    newList.splice(toIdx, 0, moved);
+    setCategories(newList);
+    setDragId(null);
+    setIsSavingOrder(true);
+    try {
+      await fetch('/api/medicine-categories/reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ids: newList.map(c => c.id) }),
+      });
+    } catch (err) {
+      console.error('Failed to save order:', err);
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
+
   // Fetch categories from API
   useEffect(() => {
     const fetchCategories = async () => {
@@ -390,10 +427,18 @@ export default function CategoryPage() {
 
       {/* Categories Table */}
       <div className="bg-white rounded-lg border border-[#dfedfb] overflow-hidden">
+        <div className="px-4 py-2 border-b border-[#dfedfb] flex items-center gap-2">
+          <p className="text-xs text-[#7895b3] flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+            Drag rows to reorder. Order is saved automatically.
+            {isSavingOrder && <span className="text-[#435970] font-medium ml-1">Saving...</span>}
+          </p>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-[#dfedfb]">
               <tr>
+                <th className="px-4 py-3 w-8"></th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider w-12">
                   <input
                     type="checkbox"
@@ -422,7 +467,7 @@ export default function CategoryPage() {
             <tbody className="divide-y divide-[#dfedfb]">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
+                  <td colSpan={7} className="px-6 py-12 text-center">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#435970]"></div>
                       <span className="ml-3 text-[#7895b3]">Loading categories...</span>
@@ -431,13 +476,27 @@ export default function CategoryPage() {
                 </tr>
               ) : categories.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
+                  <td colSpan={7} className="px-6 py-12 text-center">
                     <p className="text-[#7895b3]">No categories found. Create your first category to get started.</p>
                   </td>
                 </tr>
               ) : (
                 categories.map((category) => (
-                  <tr key={category.id} className="hover:bg-[#dfedfb]/20 transition-colors">
+                  <tr
+                    key={category.id}
+                    draggable
+                    onDragStart={() => handleDragStart(category.id)}
+                    onDragOver={(e) => handleDragOver(e, category.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleCategoryDrop(e, category.id)}
+                    onDragEnd={() => { setDragId(null); setDragOverId(null); }}
+                    className={`transition-colors ${dragOverId === category.id ? 'bg-[#dfedfb] border-t-2 border-[#435970]' : 'hover:bg-[#dfedfb]/20'} ${dragId === category.id ? 'opacity-40' : ''}`}
+                  >
+                    <td className="px-4 py-4 w-8">
+                      <svg className="w-4 h-4 text-[#7895b3] cursor-grab active:cursor-grabbing mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      </svg>
+                    </td>
                     <td className="px-6 py-4">
                       <input
                         type="checkbox"

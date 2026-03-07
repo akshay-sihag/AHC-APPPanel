@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
           createdAt: blog.createdAt.toISOString(),
           updatedAt: blog.updatedAt.toISOString(),
           relatedMedicines: {
-            heading: blog.relatedMedicinesHeading || null,
+            heading: tBlog.relatedMedicinesHeading || null,
             items: relatedMedicines,
           },
         },
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
     const [blogs, total] = await Promise.all([
       prisma.blog.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
         skip,
         take: limit,
         select: {

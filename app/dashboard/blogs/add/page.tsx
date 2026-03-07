@@ -476,6 +476,7 @@ export default function AddBlogPage() {
             { field: 'title', label: 'Title', type: 'text' },
             { field: 'tagline', label: 'Tagline', type: 'text' },
             { field: 'description', label: 'Description', type: 'richtext' },
+            { field: 'relatedMedicinesHeading', label: 'Related Medicines Heading', type: 'text' },
           ]}
           onTranslationsChange={setPendingTranslations}
         />

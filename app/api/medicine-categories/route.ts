@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const [categories, total] = await Promise.all([
       prisma.medicineCategory.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
         skip,
         take: limit,
         include: {

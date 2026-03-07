@@ -221,6 +221,7 @@ model Blog {
   tags          String[] // Array of tags
   featuredImage String
   status        String   @default("published") // published, draft
+  order         Int      @default(0) // Manual sort order
 
   // Related medicines shown below the post in the app
   relatedMedicinesHeading String? // Custom heading for the related medicines section
@@ -262,6 +263,7 @@ model Medicine {
   price       Float? // Price in USD
   productType String  @default("simple") // simple, subscription
   status      String  @default("active") // active, inactive
+  order       Int     @default(0) // Manual sort order
 
   // Relations
   category MedicineCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)

@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
             select: { medicines: true }
           }
         },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
         skip,
         take: limit,
       }),
