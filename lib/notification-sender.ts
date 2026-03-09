@@ -3,8 +3,15 @@ import { initializeFCM, logPushNotification, updatePushNotificationLog } from '.
 import type { NotificationSource, NotificationType } from './fcm-service';
 import * as admin from 'firebase-admin';
 
-const DEFAULT_BATCH_SIZE = 5;
-const DEFAULT_BATCH_DELAY_MS = 1000;
+// sendEachForMulticast supports up to 500 tokens but has HTTP/2 stream limits;
+// 100 is a safe sweet spot that avoids connection issues while being efficient.
+const DEFAULT_BATCH_SIZE = 100;
+const DEFAULT_BATCH_DELAY_MS = 2000;
+
+/** Yield the event loop so other requests (dashboard, API) can be served */
+function yieldEventLoop(): Promise<void> {
+  return new Promise(resolve => setImmediate(resolve));
+}
 
 async function getAllFcmTokens(): Promise<string[]> {
   const devices = await prisma.userDevice.findMany({
@@ -230,9 +237,9 @@ export async function processNotificationSend(notificationId: string, retryOnly:
       return;
     }
 
-    // Build the FCM message template
-    const buildMessage = (token: string): admin.messaging.Message => ({
-      token,
+    // Build the multicast message (same message for all tokens)
+    const multicastBase: admin.messaging.MulticastMessage = {
+      tokens: [], // will be set per batch
       notification: {
         title: notification.title,
         body: notification.description,
@@ -274,35 +281,49 @@ export async function processNotificationSend(notificationId: string, retryOnly:
           },
         }),
       },
-    });
+    };
 
-    // Send in small batches with delay between each batch to avoid CPU/RAM spikes
+    // Send in batches using sendEachForMulticast (one API call per batch instead of per token)
     for (let i = startIndex; i < fcmTokens.length; i += batchSize) {
-      const batch = fcmTokens.slice(i, i + batchSize);
+      const batchTokens = fcmTokens.slice(i, i + batchSize);
 
-      // Send each token in the batch sequentially to keep resource usage low
-      for (const token of batch) {
-        try {
-          await admin.messaging(firebaseApp).send(buildMessage(token));
-          currentSuccess++;
-        } catch (error: any) {
-          currentFailure++;
-          failedSendTokens.push(token);
-          if (error.code === 'messaging/invalid-registration-token' ||
-              error.code === 'messaging/registration-token-not-registered') {
-            invalidTokens.push(token);
+      try {
+        // sendEachForMulticast sends one multicast API call for the entire batch
+        const response = await admin.messaging(firebaseApp).sendEachForMulticast({
+          ...multicastBase,
+          tokens: batchTokens,
+        });
+
+        // Process individual results
+        response.responses.forEach((resp, idx) => {
+          if (resp.success) {
+            currentSuccess++;
+          } else {
+            currentFailure++;
+            const token = batchTokens[idx];
+            failedSendTokens.push(token);
+            const errorCode = resp.error?.code || 'unknown';
+            if (errorCode === 'messaging/invalid-registration-token' ||
+                errorCode === 'messaging/registration-token-not-registered') {
+              invalidTokens.push(token);
+            }
+            const errorMsg = resp.error?.message || 'Unknown error';
+            const detailedError = errorCode !== 'unknown'
+              ? `${errorCode}: ${errorMsg}`
+              : errorMsg;
+            if (errors.length < 10) errors.push(detailedError);
           }
-          const errorCode = error?.code || 'unknown';
-          const errorMsg = error?.message || 'Unknown error';
-          const detailedError = errorCode !== 'unknown'
-            ? `${errorCode}: ${errorMsg}`
-            : errorMsg;
-          if (errors.length < 10) errors.push(detailedError);
-        }
+        });
+      } catch (error: any) {
+        // Entire batch failed (network error, etc.) — mark all tokens as failed
+        currentFailure += batchTokens.length;
+        failedSendTokens.push(...batchTokens);
+        const errorMsg = error?.message || 'Batch send failed';
+        if (errors.length < 10) errors.push(errorMsg);
       }
 
       // Update progress in DB after each batch
-      const processed = Math.min(i + batch.length, fcmTokens.length);
+      const processed = Math.min(i + batchTokens.length, fcmTokens.length);
       await prisma.notification.update({
         where: { id: notificationId },
         data: {
@@ -314,18 +335,24 @@ export async function processNotificationSend(notificationId: string, retryOnly:
         },
       });
 
-      // Pause between batches to avoid overwhelming the server
+      // Yield event loop + delay between batches so other requests can be served
       if (i + batchSize < fcmTokens.length) {
+        await yieldEventLoop();
         await new Promise(resolve => setTimeout(resolve, batchDelayMs));
       }
     }
 
-    // Remove invalid tokens from database
+    // Remove invalid tokens from database (both UserDevice and legacy AppUser.fcmToken)
     if (invalidTokens.length > 0) {
-      await prisma.appUser.updateMany({
-        where: { fcmToken: { in: invalidTokens } },
-        data: { fcmToken: null },
-      });
+      await Promise.all([
+        prisma.userDevice.deleteMany({
+          where: { fcmToken: { in: invalidTokens } },
+        }),
+        prisma.appUser.updateMany({
+          where: { fcmToken: { in: invalidTokens } },
+          data: { fcmToken: null },
+        }),
+      ]);
       console.log(`[NotifSender] Removed ${invalidTokens.length} invalid FCM token(s)`);
     }
 
