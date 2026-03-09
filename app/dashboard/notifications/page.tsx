@@ -47,8 +47,8 @@ export default function NotificationsPage() {
     image: '',
     url: '',
     isActive: true,
-    batchSize: 5,
-    batchDelayMs: 1000,
+    batchSize: 100,
+    batchDelayMs: 2000,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -1024,12 +1024,12 @@ export default function NotificationsPage() {
                     type="number"
                     id="batchSize"
                     min={1}
-                    max={50}
+                    max={500}
                     value={formData.batchSize}
-                    onChange={(e) => setFormData({ ...formData, batchSize: Math.max(1, Math.min(50, parseInt(e.target.value) || 5)) })}
+                    onChange={(e) => setFormData({ ...formData, batchSize: Math.max(1, Math.min(500, parseInt(e.target.value) || 100)) })}
                     className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
                   />
-                  <p className="text-xs text-[#7895b3] mt-1">Notifications sent per batch (1-50)</p>
+                  <p className="text-xs text-[#7895b3] mt-1">Tokens per multicast batch (1-500, recommended: 100)</p>
                 </div>
                 <div>
                   <label htmlFor="batchDelayMs" className="block text-sm font-medium text-[#435970] mb-2">
@@ -1042,7 +1042,7 @@ export default function NotificationsPage() {
                     max={10000}
                     step={100}
                     value={formData.batchDelayMs}
-                    onChange={(e) => setFormData({ ...formData, batchDelayMs: Math.max(0, Math.min(10000, parseInt(e.target.value) || 1000)) })}
+                    onChange={(e) => setFormData({ ...formData, batchDelayMs: Math.max(0, Math.min(10000, parseInt(e.target.value) || 2000)) })}
                     className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
                   />
                   <p className="text-xs text-[#7895b3] mt-1">Pause in ms between batches (0-10000)</p>
