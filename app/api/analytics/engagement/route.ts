@@ -17,17 +17,18 @@ export async function GET() {
 
     const totalUsers = await prisma.appUser.count();
 
-    // Count users who have at least 1 medication log
-    const usersWithMedicineLogs = await prisma.medicationLog.groupBy({
+    // Count users who have at least 1 daily check-in (medicine shot)
+    const usersWithCheckIns = await prisma.dailyCheckIn.groupBy({
       by: ['appUserId'],
     });
-    const usersWithAtLeastOneMedicine = usersWithMedicineLogs.length;
+    const usersWithAtLeastOneMedicine = usersWithCheckIns.length;
     const usersWithNoMedicine = totalUsers - usersWithAtLeastOneMedicine;
 
-    // Total medicine shots logged
-    const totalMedicineShots = await prisma.medicationLog.count();
+    // Total medicine shots (daily check-ins) logged
+    const totalMedicineShots = await prisma.dailyCheckIn.count();
 
-    // Count users who have more than 1 weight log (first log is the initial one, so >1 means at least 1 new additional log)
+    // Count users who have at least 1 weight log
+    // The first weight log per user is the initial weight entry, so we need >1 to count as "logged additional"
     const weightLogCounts = await prisma.weightLog.groupBy({
       by: ['appUserId'],
       _count: { id: true },
@@ -38,7 +39,7 @@ export async function GET() {
     const usersWithWeightLogsTotal = weightLogCounts.length;
     const usersWithNoAdditionalWeightLog = totalUsers - usersWithAdditionalWeightLog;
 
-    // Total weight logs (excluding first per user)
+    // Total weight logs (excluding first per user = initial weight)
     const totalWeightLogs = await prisma.weightLog.count();
     const additionalWeightLogs = totalWeightLogs - usersWithWeightLogsTotal;
 
