@@ -320,8 +320,8 @@ export default function NotificationsPage() {
       image: '',
       url: '',
       isActive: true,
-      batchSize: 5,
-      batchDelayMs: 1000,
+      batchSize: 100,
+      batchDelayMs: 2000,
     });
     setImageFile(null);
     setImagePreview(null);
@@ -340,8 +340,8 @@ export default function NotificationsPage() {
       image: notification.image || '',
       url: notification.url || '',
       isActive: notification.isActive,
-      batchSize: 5,
-      batchDelayMs: 1000,
+      batchSize: notification.batchSize || 100,
+      batchDelayMs: notification.batchDelayMs ?? 2000,
     });
     setImageFile(null);
     setImagePreview(notification.image ? getImageUrl(notification.image) : null);
@@ -361,8 +361,8 @@ export default function NotificationsPage() {
       image: '',
       url: '',
       isActive: true,
-      batchSize: 5,
-      batchDelayMs: 1000,
+      batchSize: 100,
+      batchDelayMs: 2000,
     });
     setImageFile(null);
     setImagePreview(null);
