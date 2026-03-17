@@ -181,6 +181,7 @@ export async function GET(request: NextRequest) {
             medicationName: notification.medicationName,
             scheduledType: notification.scheduledType,
             checkInId: notification.checkInId,
+            url: '/my-plan',
           },
           {
             source: 'system',

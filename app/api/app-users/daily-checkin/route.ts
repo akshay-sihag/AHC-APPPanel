@@ -130,6 +130,7 @@ async function scheduleMedicationReminders(
       medicationName,
       nextDate,
       action: 'logged',
+      url: '/my-plan',
     },
     {
       source: 'system',
