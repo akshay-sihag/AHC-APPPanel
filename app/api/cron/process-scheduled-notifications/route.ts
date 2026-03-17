@@ -2,11 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendPushNotificationToUser } from '@/lib/fcm-service';
 
+// Process up to this many notifications per cron run to avoid Vercel function timeout
+const BATCH_LIMIT = 50;
+
 /**
  * Get today's date in YYYY-MM-DD format (UTC)
  */
 function getTodayDate(): string {
   return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * Check if a user has any FCM tokens (UserDevice table or legacy field)
+ */
+async function userHasFcmTokens(appUserId: string, legacyFcmToken: string | null): Promise<boolean> {
+  if (legacyFcmToken) return true;
+
+  const deviceCount = await prisma.userDevice.count({
+    where: { appUserId },
+  });
+  return deviceCount > 0;
 }
 
 /**
@@ -30,6 +45,7 @@ export async function GET(request: NextRequest) {
 
     // Allow if CRON_SECRET matches, or if no CRON_SECRET is set (dev mode)
     if (expectedSecret && cronSecret !== expectedSecret) {
+      console.error('[Cron] Unauthorized: CRON_SECRET mismatch. Received header:', cronSecret ? 'present' : 'missing');
       return NextResponse.json(
         { error: 'Unauthorized. Valid CRON_SECRET required.' },
         { status: 401 }
@@ -42,7 +58,7 @@ export async function GET(request: NextRequest) {
     const today = getTodayDate();
     console.log(`[Cron] Processing scheduled notifications for ${today}${dryRun ? ' (DRY RUN)' : ''}`);
 
-    // Find all pending notifications scheduled for today or earlier
+    // Find pending notifications scheduled for today or earlier, limited to avoid timeout
     const pendingNotifications = await prisma.scheduledNotification.findMany({
       where: {
         status: 'pending',
@@ -65,9 +81,10 @@ export async function GET(request: NextRequest) {
         { scheduledDate: 'asc' },
         { createdAt: 'asc' },
       ],
+      take: BATCH_LIMIT,
     });
 
-    console.log(`[Cron] Found ${pendingNotifications.length} pending notifications`);
+    console.log(`[Cron] Found ${pendingNotifications.length} pending notifications (limit: ${BATCH_LIMIT})`);
 
     if (pendingNotifications.length === 0) {
       return NextResponse.json({
@@ -95,33 +112,51 @@ export async function GET(request: NextRequest) {
     for (const notification of pendingNotifications) {
       const { appUser } = notification;
 
-      // Skip if user is inactive or has no FCM token
-      if (!appUser || appUser.status !== 'Active' || !appUser.fcmToken) {
+      // Skip if user not found or inactive
+      if (!appUser || appUser.status !== 'Active') {
         skipped++;
+        const reason = !appUser ? 'User not found' : 'User inactive';
         results.push({
           id: notification.id,
           medicationName: notification.medicationName,
           scheduledType: notification.scheduledType,
           userEmail: appUser?.email || 'unknown',
           status: 'skipped',
-          error: !appUser ? 'User not found' : (!appUser.fcmToken ? 'No FCM token' : 'User inactive'),
+          error: reason,
         });
 
-        // Update status to failed with reason
         if (!dryRun) {
           await prisma.scheduledNotification.update({
             where: { id: notification.id },
-            data: {
-              status: 'failed',
-              errorMessage: !appUser ? 'User not found' : (!appUser.fcmToken ? 'No FCM token' : 'User inactive'),
-            },
+            data: { status: 'failed', errorMessage: reason },
+          });
+        }
+        continue;
+      }
+
+      // Check both UserDevice table AND legacy fcmToken field
+      const hasTokens = await userHasFcmTokens(appUser.id, appUser.fcmToken);
+      if (!hasTokens) {
+        skipped++;
+        results.push({
+          id: notification.id,
+          medicationName: notification.medicationName,
+          scheduledType: notification.scheduledType,
+          userEmail: appUser.email,
+          status: 'skipped',
+          error: 'No FCM token (checked devices and legacy field)',
+        });
+
+        if (!dryRun) {
+          await prisma.scheduledNotification.update({
+            where: { id: notification.id },
+            data: { status: 'failed', errorMessage: 'No FCM token (checked devices and legacy field)' },
           });
         }
         continue;
       }
 
       if (dryRun) {
-        // In dry run, just log what would be sent
         console.log(`[Cron DRY RUN] Would send to ${appUser.email}: ${notification.title}`);
         results.push({
           id: notification.id,
@@ -164,13 +199,9 @@ export async function GET(request: NextRequest) {
             status: 'sent',
           });
 
-          // Update notification status
           await prisma.scheduledNotification.update({
             where: { id: notification.id },
-            data: {
-              status: 'sent',
-              sentAt: new Date(),
-            },
+            data: { status: 'sent', sentAt: new Date() },
           });
         } else {
           failed++;
@@ -183,13 +214,9 @@ export async function GET(request: NextRequest) {
             error: result.error,
           });
 
-          // Update notification status
           await prisma.scheduledNotification.update({
             where: { id: notification.id },
-            data: {
-              status: 'failed',
-              errorMessage: result.error,
-            },
+            data: { status: 'failed', errorMessage: result.error },
           });
         }
       } catch (error) {
@@ -204,13 +231,9 @@ export async function GET(request: NextRequest) {
           error: errorMessage,
         });
 
-        // Update notification status
         await prisma.scheduledNotification.update({
           where: { id: notification.id },
-          data: {
-            status: 'failed',
-            errorMessage,
-          },
+          data: { status: 'failed', errorMessage },
         });
       }
     }
