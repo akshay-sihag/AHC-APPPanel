@@ -4,6 +4,10 @@ import { authOptions } from '@/lib/auth-config';
 import { validateApiKey } from '@/lib/middleware';
 import { prisma } from '@/lib/prisma';
 import { sendPushNotificationToUser } from '@/lib/fcm-service';
+import { isValidTimezone, zonedDateTimeToUtc } from '@/lib/timezone';
+
+// Local hour at which reminders fire (9 AM in the user's timezone, or UTC fallback)
+const REMINDER_LOCAL_HOUR = 9;
 
 type CheckInRecord = {
   id: string;
@@ -100,21 +104,36 @@ function getDayBefore(dateStr: string): string {
 }
 
 /**
+ * Resolve the UTC instant at which a reminder should fire for a given
+ * calendar date. If `timezone` is a valid IANA zone, 9 AM local on that
+ * date is converted to UTC. Otherwise we fall back to 9 AM UTC — still
+ * better than 00:00 UTC, which fires a day early for western zones.
+ */
+function resolveScheduledAt(date: string, timezone: string | null): Date {
+  if (timezone && isValidTimezone(timezone)) {
+    return zonedDateTimeToUtc(date, REMINDER_LOCAL_HOUR, 0, timezone);
+  }
+  return new Date(`${date}T${String(REMINDER_LOCAL_HOUR).padStart(2, '0')}:00:00Z`);
+}
+
+/**
  * Schedule medication reminder notifications
  * Creates 3 notifications:
  * 1. Immediate - confirms logging and shows next date
- * 2. Day before next date - reminder
- * 3. On next date - reminder to take medication
+ * 2. Day before next date - reminder (9 AM user-local, or 9 AM UTC fallback)
+ * 3. On next date - reminder to take medication (same hour)
  */
 async function scheduleMedicationReminders(
   appUserId: string,
   checkInId: string,
   medicationName: string,
   nextDate: string,
-  userEmail: string
+  userEmail: string,
+  timezone: string | null
 ): Promise<void> {
   const dayBefore = getDayBefore(nextDate);
   const today = getTodayDate();
+  const now = new Date();
 
   // 1. Send immediate notification
   const immediateTitle = 'Medication Logged';
@@ -146,22 +165,25 @@ async function scheduleMedicationReminders(
       checkInId,
       medicationName,
       scheduledDate: today,
+      scheduledAt: now,
       scheduledType: 'immediate',
       title: immediateTitle,
       body: immediateBody,
       status: 'sent',
-      sentAt: new Date(),
+      sentAt: now,
     },
   });
 
-  // 2. Schedule day before notification (if day before is in the future)
-  if (dayBefore > today) {
+  // 2. Schedule day-before notification (only if 9 AM local on dayBefore is still in the future)
+  const dayBeforeAt = resolveScheduledAt(dayBefore, timezone);
+  if (dayBeforeAt.getTime() > now.getTime()) {
     await prisma.scheduledNotification.create({
       data: {
         appUserId,
         checkInId,
         medicationName,
         scheduledDate: dayBefore,
+        scheduledAt: dayBeforeAt,
         scheduledType: 'day_before',
         title: 'Medication Reminder - Tomorrow',
         body: `Reminder: Your ${medicationName} is scheduled for tomorrow (${nextDate}).`,
@@ -170,14 +192,16 @@ async function scheduleMedicationReminders(
     });
   }
 
-  // 3. Schedule on-date notification (if next date is in the future or today)
-  if (nextDate >= today) {
+  // 3. Schedule on-date notification (only if 9 AM local on nextDate is still in the future)
+  const onDateAt = resolveScheduledAt(nextDate, timezone);
+  if (onDateAt.getTime() > now.getTime()) {
     await prisma.scheduledNotification.create({
       data: {
         appUserId,
         checkInId,
         medicationName,
         scheduledDate: nextDate,
+        scheduledAt: onDateAt,
         scheduledType: 'on_date',
         title: 'Medication Due Today',
         body: `Today is the day! Your ${medicationName} is due. Don't forget to log it.`,
@@ -186,7 +210,12 @@ async function scheduleMedicationReminders(
     });
   }
 
-  console.log(`Scheduled medication reminders for ${medicationName}: immediate (sent), day_before (${dayBefore}), on_date (${nextDate})`);
+  console.log(
+    `Scheduled medication reminders for ${medicationName}: immediate (sent), ` +
+      `day_before=${dayBefore} @ ${dayBeforeAt.toISOString()}, ` +
+      `on_date=${nextDate} @ ${onDateAt.toISOString()} ` +
+      `(tz=${timezone ?? 'UTC fallback'})`
+  );
 }
 
 /**
@@ -249,7 +278,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { wpUserId, email, buttonType = 'default', deviceInfo, medicationName = 'default', nextDate, orderId } = body;
+    const { wpUserId, email, buttonType = 'default', deviceInfo, medicationName = 'default', nextDate, orderId, timezone: rawTimezone } = body;
 
     if (!wpUserId && !email) {
       return NextResponse.json(
@@ -266,19 +295,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Accept a `timezone` (IANA string, e.g. "America/Los_Angeles"). Invalid or
+    // missing values are treated as null; the scheduler falls back to 9 AM UTC.
+    const timezone: string | null =
+      typeof rawTimezone === 'string' && isValidTimezone(rawTimezone) ? rawTimezone : null;
+    if (rawTimezone && !timezone) {
+      console.warn(`[daily-checkin] Ignoring invalid timezone "${rawTimezone}"`);
+    }
+
     // Find the user
     let user;
     if (wpUserId) {
       user = await prisma.appUser.findUnique({
         where: { wpUserId },
-        select: { id: true, email: true, wpUserId: true },
+        select: { id: true, email: true, wpUserId: true, timezone: true },
       });
     }
 
     if (!user && email) {
       user = await prisma.appUser.findFirst({
         where: { email: email.toLowerCase().trim() },
-        select: { id: true, email: true, wpUserId: true },
+        select: { id: true, email: true, wpUserId: true, timezone: true },
       });
     }
 
@@ -288,6 +325,19 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Persist the latest timezone on the user if it has changed, so other
+    // scheduled jobs can reuse it without the client having to resend it.
+    if (timezone && timezone !== user.timezone) {
+      await prisma.appUser.update({
+        where: { id: user.id },
+        data: { timezone },
+      });
+      user.timezone = timezone;
+    }
+
+    // Prefer the request timezone; fall back to whatever we previously stored.
+    const effectiveTimezone = timezone ?? user.timezone ?? null;
 
     // Use provided date or default to today
     const checkInDate = dateParam || getTodayDate();
@@ -331,7 +381,8 @@ export async function POST(request: NextRequest) {
             checkIn.id,
             medicationName,
             nextDate,
-            user.email
+            user.email,
+            effectiveTimezone
           );
         } catch (notifError) {
           console.error('Failed to schedule medication reminders:', notifError);
@@ -356,6 +407,9 @@ export async function POST(request: NextRequest) {
           immediate: 'sent',
           dayBefore: getDayBefore(nextDate),
           onDate: nextDate,
+          timezone: effectiveTimezone,
+          dayBeforeAt: resolveScheduledAt(getDayBefore(nextDate), effectiveTimezone).toISOString(),
+          onDateAt: resolveScheduledAt(nextDate, effectiveTimezone).toISOString(),
         } : null,
         user: {
           email: user.email,

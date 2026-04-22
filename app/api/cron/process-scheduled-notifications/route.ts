@@ -56,15 +56,20 @@ export async function GET(request: NextRequest) {
     const dryRun = searchParams.get('dryRun') === 'true';
 
     const today = getTodayDate();
-    console.log(`[Cron] Processing scheduled notifications for ${today}${dryRun ? ' (DRY RUN)' : ''}`);
+    const now = new Date();
+    console.log(`[Cron] Processing scheduled notifications as of ${now.toISOString()}${dryRun ? ' (DRY RUN)' : ''}`);
 
-    // Find pending notifications scheduled for today or earlier, limited to avoid timeout
+    // Find pending notifications that are due, limited to avoid timeout.
+    // Rows written with a precise UTC `scheduledAt` (post-timezone-support)
+    // are due when that instant has passed. Legacy rows without `scheduledAt`
+    // fall back to the calendar-day comparison used historically.
     const pendingNotifications = await prisma.scheduledNotification.findMany({
       where: {
         status: 'pending',
-        scheduledDate: {
-          lte: today,
-        },
+        OR: [
+          { scheduledAt: { lte: now } },
+          { AND: [{ scheduledAt: null }, { scheduledDate: { lte: today } }] },
+        ],
       },
       include: {
         appUser: {
@@ -78,6 +83,7 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: [
+        { scheduledAt: 'asc' },
         { scheduledDate: 'asc' },
         { createdAt: 'asc' },
       ],

@@ -162,6 +162,10 @@ model AppUser {
   // Push notifications (legacy - kept for backward compatibility)
   fcmToken String? // Firebase Cloud Messaging token for push notifications (deprecated - use UserDevice)
 
+  // Latest IANA timezone reported by the mobile app (e.g. "America/Los_Angeles").
+  // Used to schedule reminders at the user's local wall-clock time.
+  timezone String?
+
   // Multi-device support
   devices UserDevice[]
 
@@ -527,8 +531,13 @@ model ScheduledNotification {
   appUserId      String // Foreign key to AppUser
   checkInId      String // Reference to the DailyCheckIn that created this
   medicationName String // Medication name for the notification
-  scheduledDate  String // Date to send notification (YYYY-MM-DD)
+  scheduledDate  String // Date to send notification (YYYY-MM-DD) — in the user's timezone if scheduledAt is set, otherwise UTC
   scheduledType  String // 'immediate' | 'day_before' | 'on_date'
+
+  // Precise UTC timestamp at which the notification should fire. Populated when
+  // the client provides a timezone (9 AM in user-local time converted to UTC);
+  // null on legacy rows — the cron falls back to scheduledDate for those.
+  scheduledAt DateTime?
 
   // Notification content
   title String
@@ -548,6 +557,7 @@ model ScheduledNotification {
 
   @@index([appUserId])
   @@index([scheduledDate])
+  @@index([scheduledAt])
   @@index([status])
   @@index([scheduledType])
   @@map("scheduled_notifications")
