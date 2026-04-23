@@ -973,7 +973,102 @@ export async function sendPushNotificationToAll(
   }
 }
 
+/**
+ * Broadcast a push notification to an FCM topic.
+ *
+ * One API call regardless of subscriber count — Google handles fan-out.
+ * Per-device success/failure is NOT available for topic sends (use BigQuery
+ * export if per-device delivery stats are needed).
+ */
+export async function sendPushNotificationToTopic(
+  topic: string,
+  title: string,
+  body: string,
+  imageUrl?: string,
+  data?: Record<string, string>,
+  options?: { collapseKey?: string }
+): Promise<{ success: boolean; messageId?: string; error?: string; errorCode?: string }> {
+  const ready = await initializeFCM();
+  if (!ready || !firebaseApp) {
+    return { success: false, error: 'FCM not initialized' };
+  }
 
+  let validImageUrl: string | undefined;
+  if (imageUrl && imageUrl.trim()) {
+    try {
+      const url = new URL(imageUrl.trim());
+      if (url.protocol === 'http:' || url.protocol === 'https:') {
+        validImageUrl = imageUrl.trim();
+      }
+    } catch {
+      validImageUrl = undefined;
+    }
+  }
+
+  const collapseKey = options?.collapseKey || `topic_${topic}`;
+  const stringData: Record<string, string> = {};
+  if (data) {
+    for (const [k, v] of Object.entries(data)) {
+      stringData[k] = String(v);
+    }
+  }
+
+  const message: admin.messaging.Message = {
+    topic,
+    notification: {
+      title,
+      body,
+      ...(validImageUrl && { imageUrl: validImageUrl }),
+    },
+    data: {
+      ...stringData,
+      _dedupKey: collapseKey,
+      _timestamp: String(Date.now()),
+    },
+    android: {
+      priority: 'high',
+      collapseKey,
+      notification: {
+        channelId: 'default',
+        sound: 'default',
+        priority: 'high',
+        tag: collapseKey,
+        ...(validImageUrl && { imageUrl: validImageUrl }),
+      },
+    },
+    apns: {
+      headers: {
+        'apns-collapse-id': collapseKey,
+        'apns-priority': '10',
+        'apns-push-type': 'alert',
+      },
+      payload: {
+        aps: {
+          sound: 'default',
+          'thread-id': collapseKey,
+          'content-available': 1,
+          ...(validImageUrl && { mutableContent: true }),
+        },
+      },
+      ...(validImageUrl && {
+        fcmOptions: {
+          imageUrl: validImageUrl,
+        },
+      }),
+    },
+  };
+
+  try {
+    const messageId = await admin.messaging(firebaseApp).send(message);
+    console.log(`[FCM] Topic broadcast sent to '${topic}', messageId=${messageId}`);
+    return { success: true, messageId };
+  } catch (error: any) {
+    const errorCode = error?.code || 'unknown';
+    const errorMsg = error?.message || 'Topic send failed';
+    console.error(`[FCM] Topic broadcast failed for '${topic}': ${errorCode} — ${errorMsg}`);
+    return { success: false, error: errorMsg, errorCode };
+  }
+}
 
 /**
  * Send push notification to a specific user by email or wpUserId

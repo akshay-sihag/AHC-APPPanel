@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { initializeFCM, logPushNotification, updatePushNotificationLog } from './fcm-service';
+import { initializeFCM, logPushNotification, updatePushNotificationLog, sendPushNotificationToTopic } from './fcm-service';
 import type { NotificationSource, NotificationType } from './fcm-service';
 import * as admin from 'firebase-admin';
 
@@ -7,6 +7,34 @@ import * as admin from 'firebase-admin';
 // 100 is a safe sweet spot that avoids connection issues while being efficient.
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_BATCH_DELAY_MS = 2000;
+
+// Topic that every Flutter client subscribes to on launch.
+// Must match the string used in the Flutter app's FCMService.initialize().
+const BROADCAST_TOPIC = 'all_users';
+
+/**
+ * Count active app users that currently have at least one FCM token registered.
+ * Used as the "estimated recipients" number shown in the admin panel for topic
+ * broadcasts (FCM does not return per-device delivery stats for topic sends).
+ */
+async function countActiveSubscribers(): Promise<number> {
+  const [deviceUserIds, legacyUsers] = await Promise.all([
+    prisma.userDevice.findMany({
+      where: { appUser: { status: 'Active' } },
+      select: { appUserId: true },
+      distinct: ['appUserId'],
+    }),
+    prisma.appUser.findMany({
+      where: { fcmToken: { not: null }, status: 'Active' },
+      select: { id: true },
+    }),
+  ]);
+
+  const ids = new Set<string>();
+  for (const d of deviceUserIds) ids.add(d.appUserId);
+  for (const u of legacyUsers) ids.add(u.id);
+  return ids.size;
+}
 
 /** Yield the event loop so other requests (dashboard, API) can be served */
 function yieldEventLoop(): Promise<void> {
@@ -125,6 +153,104 @@ export async function processNotificationSend(notificationId: string, retryOnly:
       });
       return;
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // BROADCAST PATH: one API call to the 'all_users' FCM topic.
+    // Google handles fan-out to every subscribed device. No batching, no
+    // token iteration, no memory pressure.
+    // ─────────────────────────────────────────────────────────────────────
+    if (!notification.targetAppUserId && !retryOnly) {
+      const estimatedRecipients = await countActiveSubscribers();
+
+      const imageUrl = notification.image
+        ? (notification.image.startsWith('http://') || notification.image.startsWith('https://'))
+          ? notification.image
+          : `${process.env.NEXTAUTH_URL || 'https://appanel.alternatehealthclub.com'}${notification.image}`
+        : undefined;
+
+      const fcmData: Record<string, string> = {
+        notificationId: notification.id,
+        type: 'notification',
+      };
+      if (notification.url) fcmData.url = notification.url;
+
+      const logId = await logPushNotification({
+        recipientCount: estimatedRecipients,
+        title: notification.title,
+        body: notification.description,
+        imageUrl: notification.image || undefined,
+        dataPayload: { notificationId: notification.id, type: 'notification' },
+        source: 'admin' as NotificationSource,
+        type: 'general' as NotificationType,
+        sourceId: notification.id,
+      });
+
+      const result = await sendPushNotificationToTopic(
+        BROADCAST_TOPIC,
+        notification.title,
+        notification.description,
+        imageUrl,
+        fcmData,
+        { collapseKey: `notif_${notification.id}` }
+      );
+
+      if (result.success) {
+        await prisma.notification.update({
+          where: { id: notificationId },
+          data: {
+            sendStatus: 'sent',
+            sendTotal: estimatedRecipients,
+            sendProgress: estimatedRecipients,
+            successCount: estimatedRecipients,
+            failureCount: 0,
+            receiverCount: estimatedRecipients,
+            sendCompletedAt: new Date(),
+            sendErrors: null,
+            failedTokens: null,
+          },
+        });
+
+        if (logId) {
+          await updatePushNotificationLog(logId, {
+            status: 'sent',
+            successCount: estimatedRecipients,
+            failureCount: 0,
+            fcmMessageId: result.messageId,
+          });
+        }
+
+        console.log(`[NotifSender] Topic broadcast complete for ${notificationId} (~${estimatedRecipients} subscribers)`);
+      } else {
+        await prisma.notification.update({
+          where: { id: notificationId },
+          data: {
+            sendStatus: 'failed',
+            sendTotal: estimatedRecipients,
+            sendProgress: 0,
+            successCount: 0,
+            failureCount: estimatedRecipients,
+            sendCompletedAt: new Date(),
+            sendErrors: JSON.stringify([result.error || 'Topic send failed']),
+          },
+        });
+
+        if (logId) {
+          await updatePushNotificationLog(logId, {
+            status: 'failed',
+            successCount: 0,
+            failureCount: estimatedRecipients,
+            errorMessage: result.error,
+            errorCode: result.errorCode,
+          });
+        }
+      }
+      return;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // TARGETED / RETRY PATH: per-token send (single user or retry of
+    // previously-failed tokens). Keeps the existing batch + progress logic.
+    // ─────────────────────────────────────────────────────────────────────
 
     // Determine which tokens to send to
     let fcmTokens: string[];
