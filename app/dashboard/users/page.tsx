@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import ConfirmModal from '@/app/components/ConfirmModal';
+import UserDetailsModal from '@/app/components/UserDetailsModal';
 
 type User = {
   id: string;
@@ -22,7 +22,6 @@ type User = {
 
 
 export default function UsersPage() {
-  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +35,11 @@ export default function UsersPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [detailsUserId, setDetailsUserId] = useState<string | null>(null);
 
   // Debounce search term
   useEffect(() => {
@@ -52,12 +56,12 @@ export default function UsersPage() {
     try {
       setLoading(true);
       setError(null);
-      
+
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '50',
       });
-      
+
       if (debouncedSearchTerm) {
         params.append('search', debouncedSearchTerm);
       }
@@ -65,7 +69,7 @@ export default function UsersPage() {
       const response = await fetch(`/api/app-users?${params.toString()}`, {
         credentials: 'include', // Include cookies for authentication
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(errorData.error || `Failed to fetch users (${response.status})`);
@@ -75,7 +79,7 @@ export default function UsersPage() {
       const fetchedUsers = data.users || [];
       setUsers(fetchedUsers);
       setTotalPages(data.pagination?.totalPages || 1);
-      
+
       // Use stats from API if available, otherwise calculate from current page
       if (data.stats) {
         setTotal(data.stats.total || 0);
@@ -99,9 +103,19 @@ export default function UsersPage() {
     fetchUsers();
   }, [fetchUsers]);
 
+  // Clear selection when the page changes or search changes
+  useEffect(() => {
+    setSelectedUsers(new Set());
+  }, [page, debouncedSearchTerm]);
+
   const handleViewUser = (user: User) => {
-    // Navigate to user details page using Next.js router (client-side navigation)
-    router.push(`/dashboard/users/${user.id}`);
+    setDetailsUserId(user.id);
+    setDetailsModalOpen(true);
+  };
+
+  const handleCloseDetailsModal = () => {
+    setDetailsModalOpen(false);
+    setDetailsUserId(null);
   };
 
   const handleDeleteClick = (user: User) => {
@@ -133,6 +147,13 @@ export default function UsersPage() {
         setInactiveCount(prev => prev - 1);
       }
 
+      // Also remove from selection if present
+      if (selectedUsers.has(userToDelete.id)) {
+        const next = new Set(selectedUsers);
+        next.delete(userToDelete.id);
+        setSelectedUsers(next);
+      }
+
       // Close modal
       setDeleteModalOpen(false);
       setUserToDelete(null);
@@ -147,6 +168,59 @@ export default function UsersPage() {
   const handleDeleteCancel = () => {
     setDeleteModalOpen(false);
     setUserToDelete(null);
+  };
+
+  const handleToggleUser = (id: string, checked: boolean) => {
+    const next = new Set(selectedUsers);
+    if (checked) {
+      next.add(id);
+    } else {
+      next.delete(id);
+    }
+    setSelectedUsers(next);
+  };
+
+  const handleToggleAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedUsers(new Set(users.map(u => u.id)));
+    } else {
+      setSelectedUsers(new Set());
+    }
+  };
+
+  const handleBulkDeleteClick = () => {
+    if (selectedUsers.size === 0) return;
+    setBulkDeleteModalOpen(true);
+  };
+
+  const handleBulkDeleteConfirm = async () => {
+    if (selectedUsers.size === 0) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const ids = Array.from(selectedUsers);
+      const response = await fetch('/api/app-users/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ids }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to delete users (${response.status})`);
+      }
+
+      setBulkDeleteModalOpen(false);
+      setSelectedUsers(new Set());
+      // Refresh the list (may need to drop to previous page if current page empties)
+      await fetchUsers();
+    } catch (err) {
+      console.error('Error bulk deleting users:', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete users');
+    } finally {
+      setIsBulkDeleting(false);
+    }
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -178,7 +252,7 @@ export default function UsersPage() {
 
   if (error && users.length === 0) {
     const isUnauthorized = error.includes('401') || error.includes('Unauthorized');
-    
+
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -198,6 +272,9 @@ export default function UsersPage() {
       </div>
     );
   }
+
+  const allSelected = users.length > 0 && users.every(u => selectedUsers.has(u.id));
+  const someSelected = selectedUsers.size > 0 && !allSelected;
 
   return (
     <div className="space-y-6">
@@ -244,12 +321,49 @@ export default function UsersPage() {
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedUsers.size > 0 && (
+        <div className="bg-[#435970] text-white rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="font-medium">{selectedUsers.size} user{selectedUsers.size === 1 ? '' : 's'} selected</span>
+            <button
+              onClick={() => setSelectedUsers(new Set())}
+              className="text-sm text-white/80 hover:text-white transition-colors underline"
+            >
+              Clear selection
+            </button>
+          </div>
+          <button
+            onClick={handleBulkDeleteClick}
+            disabled={isBulkDeleting}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete Selected
+          </button>
+        </div>
+      )}
+
       {/* Users Table */}
       <div className="bg-white rounded-lg border border-[#dfedfb] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-[#dfedfb]">
               <tr>
+                <th className="px-4 py-3 w-12">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected;
+                    }}
+                    onChange={(e) => handleToggleAll(e.target.checked)}
+                    className="w-4 h-4 text-[#435970] border-[#dfedfb] rounded focus:ring-[#7895b3] focus:ring-2 cursor-pointer"
+                    aria-label="Select all users on this page"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#435970] uppercase tracking-wider">
                   User
                 </th>
@@ -273,13 +387,27 @@ export default function UsersPage() {
             <tbody className="divide-y divide-[#dfedfb]">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-[#7895b3]">
+                  <td colSpan={7} className="px-6 py-8 text-center text-[#7895b3]">
                     {loading ? 'Loading...' : 'No users found'}
                   </td>
                 </tr>
               ) : (
                 users.map((user) => (
-                <tr key={user.id} className="hover:bg-[#dfedfb]/20 transition-colors">
+                <tr
+                  key={user.id}
+                  className={`transition-colors ${
+                    selectedUsers.has(user.id) ? 'bg-[#dfedfb]/40' : 'hover:bg-[#dfedfb]/20'
+                  }`}
+                >
+                  <td className="px-4 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedUsers.has(user.id)}
+                      onChange={(e) => handleToggleUser(user.id, e.target.checked)}
+                      className="w-4 h-4 text-[#435970] border-[#dfedfb] rounded focus:ring-[#7895b3] focus:ring-2 cursor-pointer"
+                      aria-label={`Select ${user.name}`}
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="w-10 h-10 bg-[#435970] rounded-full flex items-center justify-center text-white font-semibold text-sm mr-3">
@@ -391,7 +519,26 @@ export default function UsersPage() {
         type="danger"
         isLoading={isDeleting}
       />
+
+      {/* Bulk Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={bulkDeleteModalOpen}
+        onClose={() => setBulkDeleteModalOpen(false)}
+        onConfirm={handleBulkDeleteConfirm}
+        title="Delete Selected Users"
+        message={`Are you sure you want to delete ${selectedUsers.size} user${selectedUsers.size === 1 ? '' : 's'}? This will permanently delete all their data including weight logs and medication logs. This action cannot be undone.`}
+        confirmText={`Delete ${selectedUsers.size} User${selectedUsers.size === 1 ? '' : 's'}`}
+        cancelText="Cancel"
+        type="danger"
+        isLoading={isBulkDeleting}
+      />
+
+      {/* User Details Modal */}
+      <UserDetailsModal
+        isOpen={detailsModalOpen}
+        onClose={handleCloseDetailsModal}
+        userId={detailsUserId}
+      />
     </div>
   );
 }
-
