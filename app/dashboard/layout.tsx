@@ -141,7 +141,7 @@ function DashboardLayoutContent({
                     width={640}
                     height={240}
                     priority
-                    className="h-10 w-auto object-contain"
+                    className="h-[46px] w-auto object-contain"
                   />
                   {isMaintenanceMode && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold bg-orange-500 text-white rounded animate-pulse">
@@ -149,8 +149,7 @@ function DashboardLayoutContent({
                     </span>
                   )}
                 </div>
-                <div className="mt-1 mb-1 border-t border-[#ffffff]/30" />
-                <span className="text-sm font-medium text-[#dfedfb] mt-0 block">control panel</span>
+                <span className="mt-1 block text-base font-semibold tracking-[0.25em] text-[#dfedfb]">Control Panel</span>
               </div>
               <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
