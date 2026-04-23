@@ -149,7 +149,7 @@ function DashboardLayoutContent({
                     </span>
                   )}
                 </div>
-                <span className="mt-1 block text-base font-semibold tracking-[0.25em] text-[#dfedfb]">Control Panel</span>
+                <span className="mt-2 inline-block px-3 py-1 text-sm font-normal rounded-full bg-[#7895b3] text-white border border-[#dfedfb]/60">Control Panel</span>
               </div>
               <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
