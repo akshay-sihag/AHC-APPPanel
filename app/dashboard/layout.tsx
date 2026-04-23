@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 
@@ -132,17 +133,24 @@ function DashboardLayoutContent({
         <div className="p-6 border-b border-[#7895b3]/30">
           {isSidebarOpen ? (
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold text-white">MY AHC</h1>
+                  <Image
+                    src="/images/logo.png"
+                    alt="Alternate Health Club"
+                    width={640}
+                    height={240}
+                    priority
+                    className="h-10 w-auto object-contain"
+                  />
                   {isMaintenanceMode && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold bg-orange-500 text-white rounded animate-pulse">
                       MAINTENANCE
                     </span>
                   )}
                 </div>
-                <div className="mt-0.5 mb-0.5 border-t border-[#ffffff]/30" />
-                <span className="text-xs font-medium text-[#dfedfb] mt-0 block">control panel</span>
+                <div className="mt-1 mb-1 border-t border-[#ffffff]/30" />
+                <span className="text-sm font-medium text-[#dfedfb] mt-0 block">control panel</span>
               </div>
               <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
