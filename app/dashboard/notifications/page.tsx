@@ -21,8 +21,6 @@ type Notification = {
   sendTotal: number;
   successCount: number;
   failureCount: number;
-  batchSize: number | null;
-  batchDelayMs: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -49,8 +47,6 @@ export default function NotificationsPage() {
     image: '',
     url: '',
     isActive: true,
-    batchSize: 100,
-    batchDelayMs: 2000,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -322,8 +318,6 @@ export default function NotificationsPage() {
       image: '',
       url: '',
       isActive: true,
-      batchSize: 100,
-      batchDelayMs: 2000,
     });
     setImageFile(null);
     setImagePreview(null);
@@ -342,8 +336,6 @@ export default function NotificationsPage() {
       image: notification.image || '',
       url: notification.url || '',
       isActive: notification.isActive,
-      batchSize: notification.batchSize || 100,
-      batchDelayMs: notification.batchDelayMs ?? 2000,
     });
     setImageFile(null);
     setImagePreview(notification.image ? getImageUrl(notification.image) : null);
@@ -363,8 +355,6 @@ export default function NotificationsPage() {
       image: '',
       url: '',
       isActive: true,
-      batchSize: 100,
-      batchDelayMs: 2000,
     });
     setImageFile(null);
     setImagePreview(null);
@@ -441,8 +431,6 @@ export default function NotificationsPage() {
           image: imageUrl,
           url: formData.url.trim() || null,
           isActive: formData.isActive,
-          batchSize: formData.batchSize,
-          batchDelayMs: formData.batchDelayMs,
           targetAppUserId: targetUser?.id || null,
         }),
         credentials: 'include',
@@ -1014,41 +1002,6 @@ export default function NotificationsPage() {
                 <p className="text-xs text-[#7895b3] mt-1">
                   Leave empty to send to all users. Select a user to test the notification first.
                 </p>
-              </div>
-
-              {/* Batch Settings */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="batchSize" className="block text-sm font-medium text-[#435970] mb-2">
-                    Batch Size
-                  </label>
-                  <input
-                    type="number"
-                    id="batchSize"
-                    min={1}
-                    max={500}
-                    value={formData.batchSize}
-                    onChange={(e) => setFormData({ ...formData, batchSize: Math.max(1, Math.min(500, parseInt(e.target.value) || 100)) })}
-                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
-                  />
-                  <p className="text-xs text-[#7895b3] mt-1">Tokens per multicast batch (1-500, recommended: 100)</p>
-                </div>
-                <div>
-                  <label htmlFor="batchDelayMs" className="block text-sm font-medium text-[#435970] mb-2">
-                    Delay Between Batches (ms)
-                  </label>
-                  <input
-                    type="number"
-                    id="batchDelayMs"
-                    min={0}
-                    max={10000}
-                    step={100}
-                    value={formData.batchDelayMs}
-                    onChange={(e) => setFormData({ ...formData, batchDelayMs: Math.max(0, Math.min(10000, parseInt(e.target.value) || 2000)) })}
-                    className="w-full px-4 py-2 border border-[#dfedfb] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7895b3] focus:border-transparent text-[#435970]"
-                  />
-                  <p className="text-xs text-[#7895b3] mt-1">Pause in ms between batches (0-10000)</p>
-                </div>
               </div>
 
               {/* Active Status */}
