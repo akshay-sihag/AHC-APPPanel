@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { formatWeight } from '@/lib/unit-utils';
+import LogShotFormModal, { type LogShotFormValues } from './LogShotFormModal';
+import ConfirmModal from './ConfirmModal';
 
 type User = {
   id: string;
@@ -85,6 +87,13 @@ export default function UserDetailsModal({ isOpen, onClose, userId }: UserDetail
     totalPages: 1,
   });
 
+  // Log-shot editing state (admin-only backfill / corrections)
+  const [logShotModalOpen, setLogShotModalOpen] = useState(false);
+  const [logShotMode, setLogShotMode] = useState<'create' | 'edit'>('create');
+  const [editingLog, setEditingLog] = useState<{ id: string; values: LogShotFormValues } | null>(null);
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+  const [deletingLog, setDeletingLog] = useState(false);
+
   // Reset state when modal closes or userId changes
   useEffect(() => {
     if (!isOpen) {
@@ -97,6 +106,9 @@ export default function UserDetailsModal({ isOpen, onClose, userId }: UserDetail
       setUserDevices([]);
       setError(null);
       setWeightLogsPagination({ page: 1, limit: 10, total: 0, totalPages: 1 });
+      setLogShotModalOpen(false);
+      setEditingLog(null);
+      setDeletingLogId(null);
     }
   }, [isOpen]);
 
@@ -166,28 +178,29 @@ export default function UserDetailsModal({ isOpen, onClose, userId }: UserDetail
   }, [user]);
 
   // Fetch check-ins (monthly view)
-  useEffect(() => {
+  const refreshCheckIns = useCallback(async () => {
     if (!user) return;
-    const fetchCheckIns = async () => {
-      try {
-        setLoadingCheckIns(true);
-        const response = await fetch(
-          `/api/app-users/daily-checkin?userId=${user.id}&view=month&offset=${checkInOffset}`,
-          { credentials: 'include' }
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setCheckInDays(data.data || []);
-          setCheckInStreak(data.statistics?.currentStreak || 0);
-        }
-      } catch (err) {
-        console.error('Error fetching daily check-ins:', err);
-      } finally {
-        setLoadingCheckIns(false);
+    try {
+      setLoadingCheckIns(true);
+      const response = await fetch(
+        `/api/app-users/daily-checkin?userId=${user.id}&view=month&offset=${checkInOffset}`,
+        { credentials: 'include' }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setCheckInDays(data.data || []);
+        setCheckInStreak(data.statistics?.currentStreak || 0);
       }
-    };
-    fetchCheckIns();
+    } catch (err) {
+      console.error('Error fetching daily check-ins:', err);
+    } finally {
+      setLoadingCheckIns(false);
+    }
   }, [user, checkInOffset]);
+
+  useEffect(() => {
+    refreshCheckIns();
+  }, [refreshCheckIns]);
 
   // Fetch weight logs
   useEffect(() => {
@@ -219,6 +232,98 @@ export default function UserDetailsModal({ isOpen, onClose, userId }: UserDetail
   const handleWeightLogsPageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= weightLogsPagination.totalPages) {
       setWeightLogsPagination({ ...weightLogsPagination, page: newPage });
+    }
+  };
+
+  const openAddLogShot = () => {
+    setLogShotMode('create');
+    setEditingLog(null);
+    setLogShotModalOpen(true);
+  };
+
+  const openEditLogShot = (entry: MedicationEntry) => {
+    const timeDate = new Date(entry.time);
+    const hh = String(timeDate.getUTCHours()).padStart(2, '0');
+    const mm = String(timeDate.getUTCMinutes()).padStart(2, '0');
+    const logDate = timeDate.toISOString().split('T')[0];
+    setLogShotMode('edit');
+    setEditingLog({
+      id: entry.id,
+      values: {
+        date: logDate,
+        time: `${hh}:${mm}`,
+        medicationName: entry.medicationName === 'default' ? '' : entry.medicationName,
+        nextDate: entry.nextDate ? entry.nextDate.split('T')[0] : '',
+      },
+    });
+    setLogShotModalOpen(true);
+  };
+
+  const submitLogShot = async (values: LogShotFormValues) => {
+    if (!user) throw new Error('User not loaded');
+
+    if (logShotMode === 'create') {
+      const url = `/api/app-users/daily-checkin?date=${values.date}&time=${values.time}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          medicationName: values.medicationName,
+          nextDate: values.nextDate || undefined,
+          skipNotifications: true,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.alreadyCheckedIn) {
+        throw new Error(data.error || (data.alreadyCheckedIn
+          ? 'A log entry already exists for this date and medication.'
+          : 'Failed to add log entry.'));
+      }
+    } else if (editingLog) {
+      const response = await fetch('/api/app-users/daily-checkin', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingLog.id,
+          date: values.date,
+          time: values.time,
+          medicationName: values.medicationName,
+          nextDate: values.nextDate || null,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update log entry.');
+      }
+    }
+
+    setLogShotModalOpen(false);
+    setEditingLog(null);
+    await refreshCheckIns();
+  };
+
+  const confirmDeleteLogShot = async () => {
+    if (!deletingLogId) return;
+    try {
+      setDeletingLog(true);
+      const response = await fetch(`/api/app-users/daily-checkin?id=${deletingLogId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete log entry.');
+      }
+      setDeletingLogId(null);
+      await refreshCheckIns();
+    } catch (err) {
+      console.error('Delete log shot error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete log entry.');
+    } finally {
+      setDeletingLog(false);
     }
   };
 
@@ -503,8 +608,19 @@ export default function UserDetailsModal({ isOpen, onClose, userId }: UserDetail
                       </span>
                     )}
                   </div>
-                  <div className="text-sm text-[#7895b3]">
-                    {checkInDays.filter(d => d.hasCheckIn).length} of {checkInDays.length} days logged
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm text-[#7895b3]">
+                      {checkInDays.filter(d => d.hasCheckIn).length} of {checkInDays.length} days logged
+                    </div>
+                    <button
+                      onClick={openAddLogShot}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#435970] text-white text-xs font-medium rounded-lg hover:bg-[#7895b3] transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Log (Backfill)
+                    </button>
                   </div>
                 </div>
 
@@ -634,9 +750,31 @@ export default function UserDetailsModal({ isOpen, onClose, userId }: UserDetail
                                       <span className="text-sm font-medium text-green-700">
                                         {med.medicationName === 'default' ? 'Daily Check-in' : med.medicationName}
                                       </span>
-                                      <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">
-                                        {new Date(med.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">
+                                          {new Date(med.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                        <button
+                                          onClick={() => openEditLogShot(med)}
+                                          className="p-1 text-[#7895b3] hover:text-[#435970] hover:bg-white rounded transition-colors"
+                                          title="Edit log entry"
+                                          aria-label="Edit log entry"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          onClick={() => setDeletingLogId(med.id)}
+                                          className="p-1 text-red-400 hover:text-red-600 hover:bg-white rounded transition-colors"
+                                          title="Delete log entry"
+                                          aria-label="Delete log entry"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
+                                      </div>
                                     </div>
                                     {med.nextDate && (
                                       <div className="text-xs text-[#7895b3] flex items-center gap-1">
@@ -865,6 +1003,28 @@ export default function UserDetailsModal({ isOpen, onClose, userId }: UserDetail
           )}
         </div>
       </div>
+
+      <LogShotFormModal
+        isOpen={logShotModalOpen}
+        mode={logShotMode}
+        initialValues={logShotMode === 'edit' ? editingLog?.values : undefined}
+        onClose={() => {
+          setLogShotModalOpen(false);
+          setEditingLog(null);
+        }}
+        onSubmit={submitLogShot}
+      />
+
+      <ConfirmModal
+        isOpen={deletingLogId !== null}
+        onClose={() => !deletingLog && setDeletingLogId(null)}
+        onConfirm={confirmDeleteLogShot}
+        title="Delete Medication Log"
+        message="Are you sure you want to delete this medication log entry? This will also remove any scheduled reminder notifications tied to it. This action cannot be undone."
+        confirmText="Delete"
+        type="danger"
+        isLoading={deletingLog}
+      />
     </div>
   );
 }

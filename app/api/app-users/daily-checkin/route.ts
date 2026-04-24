@@ -237,21 +237,12 @@ async function scheduleMedicationReminders(
  */
 export async function POST(request: NextRequest) {
   try {
-    // Validate API key (POST is only for mobile app)
-    let apiKey;
-    try {
-      apiKey = await validateApiKey(request);
-    } catch (apiKeyError) {
-      console.error('API key validation error:', apiKeyError);
-      return NextResponse.json(
-        { error: 'API key validation failed' },
-        { status: 500 }
-      );
-    }
+    // Accept either API key (mobile app) or admin session (dashboard backfill)
+    const auth = await authenticateRequest(request);
 
-    if (!apiKey) {
+    if (!auth) {
       return NextResponse.json(
-        { error: 'Unauthorized. Valid API key required.' },
+        { error: 'Unauthorized. Valid API key or admin session required.' },
         { status: 401 }
       );
     }
@@ -278,12 +269,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { wpUserId, email, buttonType = 'default', deviceInfo, medicationName = 'default', nextDate, orderId, timezone: rawTimezone } = body;
+    const { userId: bodyUserId, wpUserId, email, buttonType = 'default', deviceInfo, medicationName = 'default', nextDate, orderId, timezone: rawTimezone } = body;
 
-    if (!wpUserId && !email) {
+    if (!bodyUserId && !wpUserId && !email) {
       return NextResponse.json(
-        { error: 'wpUserId or email is required' },
+        { error: 'userId, wpUserId, or email is required' },
         { status: 400 }
+      );
+    }
+
+    // userId is admin-only
+    if (bodyUserId && !auth.isAdmin) {
+      return NextResponse.json(
+        { error: 'userId parameter requires admin access' },
+        { status: 403 }
       );
     }
 
@@ -305,7 +304,12 @@ export async function POST(request: NextRequest) {
 
     // Find the user
     let user;
-    if (wpUserId) {
+    if (bodyUserId) {
+      user = await prisma.appUser.findUnique({
+        where: { id: bodyUserId },
+        select: { id: true, email: true, wpUserId: true, timezone: true },
+      });
+    } else if (wpUserId) {
       user = await prisma.appUser.findUnique({
         where: { wpUserId },
         select: { id: true, email: true, wpUserId: true, timezone: true },
@@ -373,8 +377,11 @@ export async function POST(request: NextRequest) {
 
       console.log(`Daily check-in recorded: user=${user.email}, date=${checkInDate}, medication=${medicationName}, nextDate=${nextDate || 'none'}`);
 
-      // Schedule medication reminder notifications if nextDate is provided
-      if (nextDate) {
+      // Schedule medication reminder notifications if nextDate is provided.
+      // Skip for admin backfills (past dates, or explicit skipNotifications flag) so
+      // we don't push "medication logged" notifications for historical entries.
+      const skipNotifications = auth.isAdmin && (body.skipNotifications === true || checkInDate < getTodayDate());
+      if (nextDate && !skipNotifications) {
         try {
           await scheduleMedicationReminders(
             user.id,
@@ -403,7 +410,7 @@ export async function POST(request: NextRequest) {
           orderId: checkIn.orderId ?? null,
           createdAt: checkIn.createdAt.toISOString(),
         },
-        scheduledReminders: nextDate ? {
+        scheduledReminders: nextDate && !skipNotifications ? {
           immediate: 'sent',
           dayBefore: getDayBefore(nextDate),
           onDate: nextDate,
@@ -682,36 +689,67 @@ export async function GET(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    // Validate API key (DELETE is only for mobile app)
-    let apiKey;
-    try {
-      apiKey = await validateApiKey(request);
-    } catch (apiKeyError) {
-      console.error('API key validation error:', apiKeyError);
-      return NextResponse.json(
-        { error: 'API key validation failed' },
-        { status: 500 }
-      );
-    }
+    // Accept either API key (mobile app) or admin session (dashboard)
+    const auth = await authenticateRequest(request);
 
-    if (!apiKey) {
+    if (!auth) {
       return NextResponse.json(
-        { error: 'Unauthorized. Valid API key required.' },
+        { error: 'Unauthorized. Valid API key or admin session required.' },
         { status: 401 }
       );
     }
 
     const { searchParams } = new URL(request.url);
+    const checkInId = searchParams.get('id');
+    const userId = searchParams.get('userId');
     const wpUserId = searchParams.get('wpUserId');
     const email = searchParams.get('email');
     const dateParam = searchParams.get('date');
     const buttonType = searchParams.get('buttonType') || 'default';
     const medicationName = searchParams.get('medicationName') || 'default';
 
+    // Admin can delete by record id directly
+    if (checkInId && auth.isAdmin) {
+      const checkIn = await prisma.dailyCheckIn.findUnique({
+        where: { id: checkInId },
+        include: { appUser: { select: { email: true, wpUserId: true } } },
+      });
+
+      if (!checkIn) {
+        return NextResponse.json({ error: 'Check-in record not found' }, { status: 404 });
+      }
+
+      const deletedNotifications = await prisma.scheduledNotification.deleteMany({
+        where: { checkInId: checkIn.id },
+      });
+
+      await prisma.dailyCheckIn.delete({ where: { id: checkIn.id } });
+
+      console.log(`[admin] Daily check-in deleted: id=${checkIn.id}, user=${checkIn.appUser.email}, date=${checkIn.date}, medication=${checkIn.medicationName}`);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Check-in deleted successfully',
+        deleted: {
+          id: checkIn.id,
+          date: checkIn.date,
+          buttonType: checkIn.buttonType,
+          medicationName: checkIn.medicationName,
+          nextDate: checkIn.nextDate,
+          createdAt: checkIn.createdAt.toISOString(),
+          scheduledNotificationsRemoved: deletedNotifications.count,
+        },
+        user: {
+          email: checkIn.appUser.email,
+          wpUserId: checkIn.appUser.wpUserId,
+        },
+      });
+    }
+
     // Validate required parameters
-    if (!wpUserId && !email) {
+    if (!userId && !wpUserId && !email) {
       return NextResponse.json(
-        { error: 'wpUserId or email is required' },
+        { error: 'id, userId, wpUserId, or email is required' },
         { status: 400 }
       );
     }
@@ -731,9 +769,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Find the user
+    // Find the user (admin may pass internal userId)
     let user;
-    if (wpUserId) {
+    if (userId && auth.isAdmin) {
+      user = await prisma.appUser.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, wpUserId: true },
+      });
+    } else if (wpUserId) {
       user = await prisma.appUser.findUnique({
         where: { wpUserId },
         select: { id: true, email: true, wpUserId: true },
@@ -808,6 +851,145 @@ export async function DELETE(request: NextRequest) {
     console.error('Delete check-in error:', error);
     return NextResponse.json(
       { error: 'An error occurred while deleting check-in' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH - Edit an existing daily check-in record (admin only)
+ *
+ * Used to correct historical log shots entered via the dashboard.
+ * Scheduled reminders are NOT rescheduled — the intent is record correction,
+ * not re-triggering notifications.
+ *
+ * Authentication: admin session required
+ *
+ * Request Body:
+ * - id (string, required): Check-in record id
+ * - date (string, optional): New date in YYYY-MM-DD format
+ * - time (string, optional): New time in HH:MM or HH:MM:SS format (updates createdAt)
+ * - medicationName (string, optional): New medication name
+ * - nextDate (string|null, optional): New next scheduled date (YYYY-MM-DD) or null to clear
+ * - buttonType (string, optional): New button type
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const auth = await authenticateRequest(request);
+
+    if (!auth || !auth.isAdmin) {
+      return NextResponse.json(
+        { error: 'Unauthorized. Admin session required.' },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const { id, date, time, medicationName, nextDate, buttonType } = body;
+
+    if (!id || typeof id !== 'string') {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    }
+
+    if (date !== undefined && !isValidDate(date)) {
+      return NextResponse.json(
+        { error: 'Invalid date format. Use YYYY-MM-DD.' },
+        { status: 400 }
+      );
+    }
+
+    if (time !== undefined && time !== null && !isValidTime(time)) {
+      return NextResponse.json(
+        { error: 'Invalid time format. Use HH:MM or HH:MM:SS.' },
+        { status: 400 }
+      );
+    }
+
+    if (nextDate !== undefined && nextDate !== null && !isValidDate(nextDate)) {
+      return NextResponse.json(
+        { error: 'Invalid nextDate format. Use YYYY-MM-DD.' },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.dailyCheckIn.findUnique({
+      where: { id },
+      include: { appUser: { select: { id: true, email: true, wpUserId: true } } },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Check-in record not found' }, { status: 404 });
+    }
+
+    // Build update payload
+    const updateData: {
+      date?: string;
+      medicationName?: string;
+      nextDate?: string | null;
+      buttonType?: string;
+      createdAt?: Date;
+    } = {};
+
+    if (typeof date === 'string') updateData.date = date;
+    if (typeof medicationName === 'string' && medicationName.trim()) updateData.medicationName = medicationName.trim();
+    if (nextDate === null) updateData.nextDate = null;
+    else if (typeof nextDate === 'string') updateData.nextDate = nextDate;
+    if (typeof buttonType === 'string' && buttonType.trim()) updateData.buttonType = buttonType.trim();
+
+    if (typeof time === 'string') {
+      const effectiveDate = updateData.date || existing.date;
+      const timeWithSeconds = time.split(':').length === 2 ? `${time}:00` : time;
+      updateData.createdAt = new Date(`${effectiveDate}T${timeWithSeconds}Z`);
+    } else if (updateData.date && updateData.date !== existing.date) {
+      // Date changed but no time provided — preserve the original time-of-day on the new date
+      const existingIso = existing.createdAt.toISOString();
+      const timeOfDay = existingIso.split('T')[1].split('.')[0]; // HH:MM:SS
+      updateData.createdAt = new Date(`${updateData.date}T${timeOfDay}Z`);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    }
+
+    try {
+      const updated = await prisma.dailyCheckIn.update({
+        where: { id },
+        data: updateData,
+      });
+
+      console.log(`[admin] Daily check-in updated: id=${id}, user=${existing.appUser.email}, changes=${JSON.stringify(Object.keys(updateData))}`);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Check-in updated successfully',
+        checkIn: {
+          id: updated.id,
+          date: updated.date,
+          buttonType: updated.buttonType,
+          medicationName: updated.medicationName,
+          nextDate: updated.nextDate,
+          orderId: updated.orderId ?? null,
+          createdAt: updated.createdAt.toISOString(),
+        },
+        user: {
+          email: existing.appUser.email,
+          wpUserId: existing.appUser.wpUserId,
+        },
+      });
+    } catch (error: unknown) {
+      const prismaError = error as { code?: string };
+      if (prismaError.code === 'P2002') {
+        return NextResponse.json(
+          { error: 'A check-in for this user, date, and medication already exists.' },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('Update check-in error:', error);
+    return NextResponse.json(
+      { error: 'An error occurred while updating check-in' },
       { status: 500 }
     );
   }
